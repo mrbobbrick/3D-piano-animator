@@ -7,7 +7,7 @@ sculpted hands pressing each key with a planned fingering, and the audio of the 
 
 > **Built on [Hand-thesia](https://github.com/V9011N/pygame-piano-animator) by [V9011N](https://github.com/V9011N).**
 > Their 2D app does the hard musical part: it reads the MIDI, splits it between the hands, works out the
-> fingering and animates the hands. This project adds a 3D renderer and a browser-based video studio on top.
+> fingering and animates the hands. This project adds a 3D renderer and Fallboard, a browser-based video studio, on top.
 
 <!-- Demo video: on GitHub, click the pencil icon to edit this file and drag an .mp4 (under 10 MB) right here. -->
 
@@ -20,11 +20,17 @@ sculpted hands pressing each key with a planned fingering, and the audio of the 
   hand's colour.
 - **Styles.** Presets (Classic, Embers, Neon, Glass, Rainbow, Minimal) plus a long list of settings: notes on a
   wall or a flat runway, glow, fire, sparks, floating dust, lights, haze, bloom, camera angle and intro moves,
-  titles, extra pairs of hands an octave apart, and more.
+  titles, and more.
+- **More hands than two.** Extra pianists can either copy the music in other octaves, or **share it side by
+  side**: the piece is divided among them so each hand only plays what it can reach, which lets them play
+  passages that two hands can't.
+- **Human touch.** Subtle, natural motion: loud notes struck from higher than soft ones, idle fingers drifting,
+  neighbouring fingers dipping together, and a hand that is never quite still. Adjustable, or off.
+- **Hands appear one at a time.** Optionally, each hand slides in just before it first plays.
 - **Vertical and square videos.** Use 9:16 for Shorts/TikTok/Reels or 1:1. The camera moves closer and follows
   the hands.
-- **3D Video Studio.** A page in your browser for editing a style, previewing single frames or 3-second clips,
-  and queuing full renders with a progress bar. Everything runs locally on your computer.
+- **Fallboard.** A clean, minimal page in your browser for editing a style, previewing single frames or
+  3-second clips, and queuing full renders with a progress bar. Everything runs locally on your computer.
 - **Audio.** What you hear is what the hands play: the performance is rendered to WAV with FluidSynth and
   muxed into the video with ffmpeg.
 
@@ -82,13 +88,13 @@ More detail is in the "3D renderer" section of [`docs/ARCHITECTURE.md`](docs/ARC
 
 ## Usage
 
-**The studio (easiest):**
+**Fallboard (easiest):**
 
 ```bash
 python video_studio.py
 ```
 
-This opens the studio in your browser. Pick a MIDI file, tweak a style, preview, render.
+This opens Fallboard in your browser. Pick a MIDI file, tweak a style, preview, then **Render**.
 
 **From the command line:**
 
@@ -101,7 +107,7 @@ python render_video.py song.mid --start 30 --end 60   # just part of the song
 
 | Option | Values |
 |---|---|
-| `--style` | a preset (`Classic`, `Embers`, `Neon`, `Glass`, `Rainbow`, `Minimal`), a style saved from the studio, or a JSON file |
+| `--style` | a preset (`Classic`, `Embers`, `Neon`, `Glass`, `Rainbow`, `Minimal`), a style saved in Fallboard, or a JSON file |
 | `--quality` | `flat` (quick check), `preview`, `fast`, `balanced` (default), `high`, `max` |
 | `--view` | `auto`, `bird`, `pianist`, `side`, `top` |
 | `--fps`, `--res` | default `30` and `1920x1080` |
@@ -123,7 +129,7 @@ python main.py song.mid --edit   # fingering editor
    performance, and writes it as JSON.
 3. `render_video.py` turns the performance into audio with FluidSynth, runs Blender (`blender/render3d.py`)
    to build the scene and render the frames, then has ffmpeg combine them into an MP4.
-4. `video_studio.py` is a small local web server (Python standard library only) that keeps a Blender open
+4. `video_studio.py` (Fallboard) is a small local web server (Python standard library only) that keeps a Blender open
    for fast previews.
 
 ## Tests
@@ -138,7 +144,7 @@ pytest
 - **2D Hand-thesia** (MIDI loading, hand split, fingering planner, hand animation, editors) by
   [V9011N](https://github.com/V9011N/pygame-piano-animator). The original project doesn't include a license,
   so all rights to that code stay with its author.
-- **3D renderer and Video Studio** (`export3d.py`, `render_video.py`, `video_style.py`, `video_studio.py`,
+- **3D renderer and Fallboard** (`export3d.py`, `render_video.py`, `video_style.py`, `video_studio.py`,
   `blender/`, `studio/`) by [mrbobbrick](https://github.com/mrbobbrick).
 - Sculpted hands from Blender Studio's Human Base Meshes (CC0). MakeHuman/MPFB assets (CC0).
 

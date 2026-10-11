@@ -27,6 +27,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 from scene import set_keys
+from video_style import entrances
 
 ASSETS = {
     "sculpted": os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "hands_sculpted.blend"),
@@ -69,6 +70,8 @@ THUMB_REACH = 0.98                 # share of its full length the sculpted thumb
 THUMB_SHIFT_MAX = 0.025            # m the hand moves toward the thumb's key at most (thumb_shift)
 STRETCHED = {"chains": 0, "stretched": 0, "most": 1.0}   # out-of-reach fingers, for the build's report
 SHIFTED = {"frames": 0, "shifted": 0, "most": 0.0}        # hand moves toward the thumb's key, likewise
+ENTER_FROM = Vector((0.0, -0.45, -0.12))  # m: where a hand slides in from (the player's side, below the keys)
+HIDDEN_SCALE = 1e-4                       # bones scaled to this collapse a hand not yet on stage to nothing
 
 
 def rest_points(rig, s):
@@ -235,11 +238,30 @@ def build(sc, data):
     pairs = {}
     for h, hd in data["hands"].items():
         pairs.setdefault(h[1:], {})[h[0]] = hd
+    # hands appearing one at a time (video_style.entrances): {label: (start, end)} in song time
+    firsts = {}
+    for n in data["notes"]:
+        firsts[n["hand"]] = min(firsts.get(n["hand"], math.inf), n["press"])
+    enter = entrances(firsts, sc.st)
+    times = (data["t0"], data["fps"])
     meshes = []
     for suffix in sorted(pairs, key=lambda x: int(x or 1)):
-        mesh, _ = build_pair(sc, pairs[suffix], sc.st.get("hand_model", "sculpted"))
+        mesh, _ = build_pair(sc, pairs[suffix], sc.st.get("hand_model", "sculpted"),
+                             {side: enter[side + suffix] for side in pairs[suffix] if side + suffix in enter}, times)
         meshes.append(mesh)
     return meshes
+
+
+def entrance_at(window, t):
+    """(slide 0..1 still to go, shown) for a hand entering over window = (start, end) at song time t."""
+    if window is None:
+        return 0.0, True
+    a, b = window
+    if t < a:
+        return 1.0, False
+    u = min(1.0, (t - a) / max(1e-6, b - a))
+    x = 1.0 - u
+    return x * x * x * (x * (x * 6 - 15) + 10), True
 
 
 def extend_forearms(mesh, rig, length=FOREARM_EXTEND):
@@ -280,8 +302,11 @@ def extend_forearms(mesh, rig, length=FOREARM_EXTEND):
     bm.free()
 
 
-def build_pair(sc, hands, model="sculpted"):
-    """One pair of hands ({"R": export hand, "L": ...}, either may be missing) on a copy of the asset."""
+def build_pair(sc, hands, model="sculpted", enter=None, times=(0.0, 60)):
+    """
+    One pair of hands ({"R": export hand, "L": ...}, either may be missing) on a copy of the asset;
+    enter: {"R"/"L": (start, end)} for hands sliding in (entrance_at), times: the export's (t0, fps).
+    """
     mesh, rig = load_asset(model)
     lifts = TIP_LIFTS.get(model, {})
     solved = model in SOLVED
@@ -330,8 +355,13 @@ def build_pair(sc, hands, model="sculpted"):
         n_fr = len(frames)
         chans = {n: ([], [], []) for n in names}       # loc, quat, scale per frame
         g = None
-        for fr, arch in zip(frames, arches):
+        window = (enter or {}).get(h)
+        for fi, (fr, arch) in enumerate(zip(frames, arches)):
             p = [Vector(fr[3 * i:3 * i + 3]) for i in range(27)]
+            # not yet on stage: slid back toward the player and down, and collapsed until it starts
+            slide, shown = entrance_at(window, times[0] + fi / times[1])
+            if slide > 0.0:
+                p = [x + ENTER_FROM * slide for x in p]
             for i, dz in lifts.items():
                 p[i].z += dz
             p.append((p[24] + p[25]) / 2)
@@ -393,7 +423,7 @@ def build_pair(sc, hands, model="sculpted"):
                     q.negate()
                 L.append(loc)
                 Q.append(q)
-                S.append(scl)
+                S.append(scl if shown else scl * HIDDEN_SCALE)
         fr_idx = list(range(1, n_fr + 1))
         for n, (L, Q, S) in chans.items():
             pb = rig.pose.bones[n + s]

@@ -44,7 +44,7 @@ import bisect
 import math
 
 from fingering import group_notes, is_crossing, key_pos, mirror_pitch, plan_fingering
-from midi_loader import RIGHT, is_black_key
+from midi_loader import LEFT, RIGHT, is_black_key
 
 # --------------------------------------------------------------------------- #
 # Real-world sizes
@@ -219,10 +219,23 @@ PIN_EASE_T = 0.12            # s a fingertip eases between pinned on its key and
 # finger already play nearly straight, so the hand itself can't rise. Each finger's room is
 # taken as its least over +-ARCH_MIN_STEPS grid steps, then averaged over as many, so a
 # knuckle settles lower ahead of a stretch instead of dropping into it.
+# Pairs sharing a piece: an idle hand keeps its wrist this many hand spans from the next
+# pianist's playing hand, where that is now and at these offsets (s)
+NEIGHBOUR_CLEAR_SPAN = 0.9
+NEIGHBOUR_LOOK_T = (-0.2, 0.0, 0.2, 0.4, 0.6, 0.8)
 ARCH_FINGERS = (2, 3, 4)
 ARCH_RAISE_IN = 0.6
 ARCH_REACH = 0.95
 ARCH_MIN_STEPS = 8
+# Human touch (pianist "humanize", 0..1; the sizes below are at 1): small, slow, deterministic
+# variations - nothing that jitters frame to frame
+LIFT_BY_VELOCITY = 0.8       # a note's lift before its strike: x(1 +- 0.4) from soft to loud...
+LIFT_VARIETY = 0.3           # ...and x(1 +- 0.15) from note to note
+FINGER_WANDER_IN = (0.06, 0.12)  # in, idle fingertips wander this much across / up and down
+SYMPATHY_IN = 0.25           # in, an idle finger dips this much with a neighbour pressing its key
+SYMPATHY = {(2, 3): 0.6, (3, 4): 1.0, (4, 5): 1.0}   # how tightly neighbours are linked (ring finger most)
+BREATH_IN = (0.16, 0.12)     # in, the whole hand sways across / up and down...
+BREATH_DEG = 1.5             # ...and turns, slowly
 SHAPE_FALLOFF = 0.6         # idle fingers follow a busy neighbour by this much per finger
 
 
@@ -251,6 +264,21 @@ def _lerp3(a, b, s): return tuple(_lerp(x, y, s) for x, y in zip(a, b))
 def _smooth(x):
     x = min(1.0, max(0.0, x))
     return x * x * x * (x * (x * 6 - 15) + 10)          # smootherstep
+
+
+def _drift(seed, t):
+    """Slow smooth wander in about -1..1: three sines (0.1-0.5 Hz) with phases from seed."""
+    out = 0.0
+    for k, (f, a) in enumerate(((0.11, 0.5), (0.23, 0.33), (0.47, 0.17))):
+        ph = math.sin(seed * 12.9898 + k * 78.233) * 43758.5453
+        out += a * math.sin(2 * math.pi * (f * (1.0 + 0.07 * (seed % 5)) * t + ph - math.floor(ph)))
+    return out
+
+
+def _note_variety(note):
+    """A fixed -1..1 for a note, from its pitch and time (the same on every run)."""
+    v = math.sin(note.pitch * 12.9898 + note.start * 78.233) * 43758.5453
+    return 2.0 * (v - math.floor(v)) - 1.0
 
 
 def loudness(velocity):
@@ -286,6 +314,22 @@ def idle_weight(spans, starts, t):
     return a * b
 
 
+def seat_side_by_side(pairs):
+    """
+    Pairs of hands sharing a piece, lowest first ([{"L": animator, "R": ...}, ...]): each
+    pianist's nearest hand to the next one's (a right hand and the next left) keep out of
+    each other's way while one of them is idle.
+    """
+    for lower, upper in zip(pairs, pairs[1:]):
+        a = lower.get(RIGHT) or lower.get(LEFT)
+        b = upper.get(LEFT) or upper.get(RIGHT)
+        if a is None or b is None:
+            continue
+        a.neighbour, a.neighbour_below = b, False
+        b.neighbour, b.neighbour_below = a, True
+        a._nb_cache, b._nb_cache = {}, {}
+
+
 def pair_hands(animators):
     """Let two hands (HandAnimators) know about each other, so an idle one keeps out of the other's way."""
     anims = list(animators)
@@ -295,6 +339,7 @@ def pair_hands(animators):
         a._limit_cache, a._tip_limit_cache = {}, {}
         a._smooth_hand_cache, a._smooth_tip_cache = {}, {}
         a._raise_cache, a._raise_min_cache = {}, {}
+        a._nb_cache = {}
 
 
 def _ease_out(x):
@@ -494,6 +539,9 @@ class HandAnimator:
     """
 
     black_rise_in = 0.0     # how far black keys stand above white ones (0: flat, as drawn in 2D)
+    seat = 0                # semitones the pianist sits right of the usual place (pairs sharing a piece)
+    neighbour = None        # the next pianist's nearest hand (pairs sharing a piece), see seat_side_by_side
+    neighbour_below = False # ...whether it is below this one
 
     def __init__(self, song, hand=RIGHT, fingering=None, pianist=None, repair=True):
         import pianist as pianists
@@ -501,8 +549,8 @@ class HandAnimator:
         self.geo = HandGeometry(self.pianist.anatomy)
         self.skin = self.pianist.skin_settings()
         self.color = tuple(self.skin["colors"]["skeleton"]["bone"])
-        self._set_behavior(self.pianist)
         self.hand = hand
+        self._set_behavior(self.pianist)
         self.song = song
         # The left hand is a right hand on the mirrored keyboard: everything
         # is solved in mirrored coordinates and flipped back when drawn.
@@ -879,8 +927,30 @@ class HandAnimator:
         for f in range(1, 6):
             if busy[f] < 1.0:
                 tips[f], _ = self._tip_target(f, t, to_world_xy(shaped[f][0], shaped[f][1] - rb[f]), hand)
+                if self.human > 0:
+                    tips[f] = self._lively(f, t, tips[f], 1.0 - busy[f], psi)
             tips[f] = self._limit_tip(f, tips[f], wx, wy, psi)
         return tips
+
+    def _lively(self, f, t, tip, idle, psi):
+        """
+        An idle fingertip (idle 0..1) with the human touch: wandering slowly across
+        and up and down, and dipping with a neighbour that is pressing its key
+        (the ring finger most, its tendons being linked to both neighbours').
+        """
+        h, ppi = self.human * idle, self.ppi
+        dx, dy = self._rot(FINGER_WANDER_IN[0] * ppi * _drift(self.seed * 10 + f, t),
+                           0.5 * FINGER_WANDER_IN[0] * ppi * _drift(self.seed * 10 + f + 5, t), psi)
+        z = tip[2] + h * FINGER_WANDER_IN[1] * ppi * _drift(self.seed * 10 + f + 20, t)
+        dip = 0.0
+        for g in (f - 1, f + 1):
+            link = SYMPATHY.get((min(f, g), max(f, g)), 0.0)
+            if link:
+                dip = max(dip, link * _smooth(self._press_amount(g, t)))
+        floor = 0.4 * HOVER[f] * self.S
+        if dip > 0 and z > floor:
+            z = max(floor, z - h * SYMPATHY_IN * ppi * dip)
+        return (tip[0] + h * dx, tip[1] + h * dy, z)
 
     def _limited_tips(self, t):
         """
@@ -1092,6 +1162,8 @@ class HandAnimator:
         self.area_near = p.b("key_area_near")
         self.area_far = max(self.area_near + 0.05, p.b("key_area_far"))
         self.roll_dt = p.b("roll_speed")
+        self.human = p.b("humanize")
+        self.seed = 1.0 if self.hand == RIGHT else 2.0
         self.cross_arc_in = 0.5 + 3.0 * p.b("cross_height")
         self.curl_k = curl_factor(p)
         c = p.b("finger_curve")
@@ -1313,10 +1385,12 @@ class HandAnimator:
         self._limit_cache, self._tip_limit_cache = {}, {}
         self._smooth_hand_cache, self._smooth_tip_cache = {}, {}
         self._raise_cache, self._raise_min_cache = {}, {}
+        self._nb_cache = {}
         # mirror axis (centre of D4) and the shoulder, ~10 semitones from D4
-        # toward the hand's own side (in the mirrored frame for the left hand)
+        # toward the hand's own side (in the mirrored frame for the left hand),
+        # moved along with the pianist's seat
         self.axis_x = kb.key_rects[62].centerx if 62 in kb.key_rects else kb.rect.centerx
-        sp = 52 if self.mirror else 72
+        sp = min(108, max(21, (52 if self.mirror else 72) + int(self.seat)))
         sx = kb.key_rects[sp].centerx if sp in kb.key_rects else kb.rect.centerx
         self.shoulder_x = self._mx(sx)
         self.forearm_len = 16 * self.ppi
@@ -1739,29 +1813,58 @@ class HandAnimator:
         _hand_at, moved out of the other hand's way while this one is idle
         and the other is playing: the idle hand keeps clear of where the
         playing hand is and is about to be, and drifts after it when it
-        gets far away, so the playing hand never has to cross over it.
+        gets far away, so the playing hand never has to cross over it. The
+        same for the next pianist's nearest hand, when pairs share a piece.
         """
         wx, wy, psi = self._hand_at(t)
-        p = self.partner
-        if p is None or not p.spans:
+        dx = self._smoothed_shift(t, self._idle_cache, self._idle_shift) \
+            if self.partner is not None and self.partner.spans else 0.0
+        if self.neighbour is not None and self.neighbour.spans:
+            nx = self._smoothed_shift(t, self._nb_cache, self._neighbour_shift)
+            dx += -nx if self.mirror else nx          # real keyboard x -> this hand's frame
+        if abs(dx) < 1e-6:
             return wx, wy, psi
-        p._ensure_layout(self.kb)
+        return wx + dx, wy, psi + self._yaw(wx + dx) - self._yaw(wx)
+
+    def _smoothed_shift(self, t, cache, shift):
+        """shift(t) on the idle grid (cached), averaged over +-IDLE_SMOOTH_T (triangular)."""
+        for a in (self.partner, self.neighbour):
+            if a is not None:
+                a._ensure_layout(self.kb)
         g, span = IDLE_GRID_T, IDLE_SMOOTH_T
         k0, k1 = math.ceil((t - span) / g), math.floor((t + span) / g)
         sd = sw = 0.0
         for k in range(k0, k1 + 1):
             w = 1.0 - abs(k * g - t) / span
             if w > 0:
-                d = self._idle_cache.get(k)
+                d = cache.get(k)
                 if d is None:
-                    if len(self._idle_cache) > 4000:
-                        self._idle_cache.clear()
-                    d = self._idle_cache[k] = self._idle_shift(k * g)
+                    if len(cache) > 4000:
+                        cache.clear()
+                    d = cache[k] = shift(k * g)
                 sd, sw = sd + w * d, sw + w
-        dx = sd / sw if sw else 0.0
-        if abs(dx) < 1e-6:
-            return wx, wy, psi
-        return wx + dx, wy, psi + self._yaw(wx + dx) - self._yaw(wx)
+        return sd / sw if sw else 0.0
+
+    def _neighbour_shift(self, t):
+        """
+        How far (real keyboard x) to move this idle hand at t so its wrist keeps
+        NEIGHBOUR_CLEAR_SPAN hand spans from the next pianist's playing hand,
+        where that is and will be over the next half second.
+        """
+        nb = self.neighbour
+        w = self.idle_at(t) * (1.0 - nb.idle_at(t))
+        if w <= 0.0:
+            return 0.0
+        # from where the partner rule puts it (which moves it away from its own partner - toward this one)
+        wx = self._hand_at(t)[0]
+        if self.partner is not None and self.partner.spans:
+            wx += self._idle_shift(t)
+        mine = self._mx(wx)
+        xs = [nb._mx(nb._grid_pose(int(round((t + d) / HAND_GRID_T)))[0]) for d in NEIGHBOUR_LOOK_T]
+        gap = NEIGHBOUR_CLEAR_SPAN * self.geo.span_units() * self.S
+        if self.neighbour_below:
+            return w * max(0.0, max(xs) + gap - mine)
+        return w * min(0.0, min(xs) - gap - mine)
 
     def _idle_shift(self, t):
         """How far (working-frame x, + = away from the other hand) to move the idle hand at t."""
@@ -1894,7 +1997,11 @@ class HandAnimator:
         if nxt is None:
             return idle, busy
         # Head for the next key as soon as this finger is free (but not more
-        # than PREP_MAX_T ahead), arriving raised and ready to strike.
+        # than PREP_MAX_T ahead), arriving raised and ready to strike: loud
+        # notes from higher, soft ones close to the keys, each a bit differently
+        if self.human > 0:
+            prep *= 1.0 + self.human * (LIFT_BY_VELOCITY * (loudness(nxt.velocity) - 0.5)
+                                        + 0.5 * LIFT_VARIETY * _note_variety(nxt))
         prep_start, strike_start, strike = self._prep_window(f, i)
         if t < prep_start:
             return idle, busy
@@ -2051,7 +2158,7 @@ class HandAnimator:
             lx = p[0] * S
             # rolled about the forearm axis: the sides dip / rise and draw in a little
             x, y = rot(xc + (lx - xc) * cos_r, p[1] * S, psi)
-            return (wx + x, wy + y, p[2] * S + self.z_off + gw * (hb[0] + droll(lx)))
+            return (wx + x, wy + y, p[2] * S + self.z_off + bob + gw * (hb[0] + droll(lx)))
 
         # fingertips, held to the top speed across the keys (_limited_tips)
         tips = {f: self._limit_tip(f, p, wx, wy, psi) for f, p in self._limited_tips(t).items()}
@@ -2080,6 +2187,16 @@ class HandAnimator:
 
         if self.black_rise_in > 0:
             tips = {f: self._over_black(p) for f, p in tips.items()}
+
+        # The hand is never quite still: a slow sway and turn of a millimetre or two, drawn
+        # only (after the fingertips are settled, so none held on a key is moved off it)
+        bob = 0.0
+        if self.human > 0:
+            h, ppi = self.human, self.ppi
+            wx += h * BREATH_IN[0] * ppi * _drift(self.seed + 40, t)
+            wy += h * 0.5 * BREATH_IN[0] * ppi * _drift(self.seed + 41, t)
+            psi += h * math.radians(BREATH_DEG) * _drift(self.seed + 42, t)
+            bob = h * BREATH_IN[1] * ppi * _drift(self.seed + 43, t)
 
         bones, joints = [], []
         up = (0.0, 0.0, 1.0)

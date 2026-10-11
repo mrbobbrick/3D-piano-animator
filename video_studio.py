@@ -1,5 +1,5 @@
 """
-video_studio.py - the 3D Video Studio: a page in your browser for styling the
+video_studio.py - Fallboard, the 3D video studio: a page in your browser for styling the
 falling notes (video_style.py), previewing single frames and rendering videos
 (render_video.py). The page talks to this small local server, which runs
 Blender and ffmpeg on this computer; nothing leaves it.
@@ -218,13 +218,14 @@ class Previews:
                 st["elapsed"] = round(time.time() - st["started"], 1)
             return st
 
-    def _export(self, song, clones):
+    def _export(self, song, clones, pairs=1, lead=3.0):
         import export3d
-        key = (song, os.path.getmtime(song), tuple(clones))
+        key = (song, os.path.getmtime(song), tuple(clones), pairs, lead)
         if key not in self.exports:
             if len(self.exports) > 4:
                 self.exports.clear()
-            exp = self.exports[key] = export3d.Export(song, clones)
+            exp = self.exports[key] = export3d.Export(song, clones, pairs)
+            exp.lead = lead
             # which notes the hands really press: slow, so worked out in the background for previews
             # (a full render gets it from its own frames)
             threading.Thread(target=exp.pressed_map, daemon=True).start()
@@ -246,7 +247,8 @@ class Previews:
                 t = float(req["t"])
                 anim = os.path.join(WORK, "preview.json")
                 style = video_style.resolve(req["style"])
-                exp = self._export(req["song"], video_style.clone_shifts(style))
+                exp = self._export(req["song"], video_style.clone_shifts(style), video_style.shared_pairs(style),
+                                   video_style.enter_lead(style))
                 exp.save(anim, 30, t - 0.6, t, video_start=exp.default_start(), video_end=exp.default_end(),
                          pressed=getattr(exp, "_pressed", None))
                 style_file = os.path.join(WORK, "preview_style.json")
@@ -700,7 +702,7 @@ def already_running(port):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="3D Video Studio (browser)")
+    ap = argparse.ArgumentParser(description="Fallboard - the 3D video studio (in your browser)")
     ap.add_argument("--port", type=int, default=PORT)
     ap.add_argument("--no-browser", action="store_true")
     args = ap.parse_args()
@@ -717,7 +719,7 @@ def main():
     srv.daemon_threads = True
     SERVER[0] = srv
     threading.Thread(target=watchdog, daemon=True).start()
-    print(f"3D Video Studio at {url}", flush=True)
+    print(f"Fallboard at {url}", flush=True)
     if not args.no_browser:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
     srv.serve_forever()

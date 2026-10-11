@@ -179,8 +179,18 @@ SETTINGS = [
          options=[("sculpted", "Sculpted (detailed)"), ("makehuman", "MakeHuman (textured)")]),
     dict(id="skin_tint", group="Hands", label="Skin tint", kind="color", default=(255, 255, 255),
          desc="Multiplies the skin's colour (white leaves it as it is)"),
+    dict(id="hands_enter", group="Hands", label="Hands appear one at a time", kind="toggle", default=False,
+         desc="Each hand slides in just before it first plays, in turn (hands that start together come in "
+              "one after another during the opening)"),
+    dict(id="hands_enter_gap", group="Hands", label="Time between hands appearing", kind="slider", min=0.2,
+         max=2.0, default=0.6, fmt=_s),
     dict(id="extra_hands", group="Hands", label="Extra pairs of hands", kind="slider", min=0, max=3, default=0,
-         fmt=_n, step=1, desc="Clones that play the same music in other octaves - just for fun"),
+         fmt=_n, step=1, desc="More pianists at the keyboard: copies of the hands, or sharing the music (below)"),
+    dict(id="extra_mode", group="Hands", label="Extra hands", kind="choice", default="copies",
+         options=[("copies", "Copy the music in other octaves (just for fun)"),
+                  ("share", "Share the music side by side (play what two hands can't)")],
+         desc="Share: the music is divided among all the pairs, each pianist taking a register, so passages "
+              "too wide or too fast for two hands are played as written"),
     dict(id="extra_spacing", group="Hands", label="Octaves between the pairs", kind="slider", min=1, max=3,
          default=1, fmt=_n, step=1),
     dict(id="extra_heard", group="Hands", label="Hear the extra hands", kind="toggle", default=True),
@@ -324,11 +334,57 @@ def to_linear(c, k=1.0):
 
 def clone_shifts(style):
     """Semitone shifts of the extra pairs of hands: +1, -1, +2, -2 ... times the spacing in octaves."""
+    if style["extra_mode"] == "share":
+        return []
     out = []
     for k in range(1, int(style["extra_hands"]) + 1):
         octaves = (k + 1) // 2 * int(style["extra_spacing"])
         out.append(12 * octaves * (1 if k % 2 else -1))
     return out
+
+
+ENTER_T = 0.8          # s a hand takes to slide in (hands_enter)
+ENTER_READY_T = 0.3    # ...finishing this long before its first note
+
+
+def entrances(firsts, style):
+    """
+    {hand: (start, end)} song times over which each hand slides in, with
+    hands_enter on (else {}): firsts = {hand: its first strike}. Hands come in
+    in the order they first play, each done ENTER_READY_T before its first
+    note, and the next starting at least hands_enter_gap after it is done
+    (hands that start together come in one by one ahead of the music).
+    """
+    if not style["hands_enter"] or not firsts:
+        return {}
+    order = sorted(firsts, key=lambda h: (firsts[h], h))
+    ends = {}
+    nxt = None                     # when the next hand starts sliding in
+    for h in reversed(order):
+        e = firsts[h] - ENTER_READY_T
+        if nxt is not None:
+            e = min(e, nxt - style["hands_enter_gap"])
+        ends[h] = e
+        nxt = e - ENTER_T
+    return {h: (ends[h] - ENTER_T, ends[h]) for h in order}
+
+
+def enter_lead(style, lead=3.0):
+    """Seconds of video before the first note: long enough for every hand to come in (hands_enter)."""
+    if not style["hands_enter"]:
+        return lead
+    hands = 2 * (shared_pairs(style) + len(clone_shifts(style)))
+    return max(lead, ENTER_READY_T + hands * ENTER_T + (hands - 1) * style["hands_enter_gap"] + 0.5)
+
+
+def shared_pairs(style):
+    """How many pairs of hands share the music (export3d.shared): 1 unless extra_mode is "share"."""
+    return 1 + int(style["extra_hands"]) if style["extra_mode"] == "share" else 1
+
+
+def extra_heard(style):
+    """Whether the extra pairs are heard: always when they share the music (it is theirs to play)."""
+    return style["extra_mode"] == "share" or style["extra_heard"]
 
 
 def note_color(style, note, black):

@@ -530,6 +530,50 @@ Detailed design notes, kept up to date as features were added. Start with `CLAUD
   slopes up 16° from the wrist: the wrist can't rise with it, as it carries the thumb's root. The export passes
   the raise per frame ("arch"); `hands_rig` takes the palm's frame from the unraised knuckles and adds the raise
   to the sculpt's own knuckles 2-4, so the arch doesn't tilt the whole palm.
+- **Human touch** (2026-10-11; pianist `humanize`, default 50%, after "put some randomness in, add some humanity
+  to the hand movement"). Only slow, smooth, deterministic variations (the same video on every render; `_drift` is
+  three sines at 0.1-0.5 Hz with phases from a seed per hand, `_note_variety` a fixed number per note), none
+  touching a fingertip held on its key, and none moving the audio. Sizes at 100%:
+  - A note's lift before its strike: x(1 ± 0.4) from soft to loud (`LIFT_BY_VELOCITY`, by `loudness`) and
+    x(1 ± 0.15) from note to note (`LIFT_VARIETY`), in `_tip_target`.
+  - Idle fingertips wander 0.06 in across, 0.12 in up and down (`FINGER_WANDER_IN`), and dip up to 0.25 in with a
+    neighbour pressing its key (`SYMPATHY`: ring finger with both neighbours fully, index-middle 60%), never below
+    40% of their hover height (`_lively`, by how idle the finger is).
+  - The drawn hand sways 0.16 in across, 0.12 in up and down and turns 1.5° (`BREATH_IN`, `BREATH_DEG`) - applied in
+    `pose` after the fingertips are settled; applied before, it pushed a held tip near its reach limit off its key.
+  - Ember Fountain at 50%: wrist ~1.1 mm from the mechanical path (at most 2.5), idle tips 1-4 mm; RH tips 21 mm
+    above the key 80 ms before soft strikes, 27 mm before loud ones. Notes never pressed, tips off and jolts as
+    before (0 / 10 / R 5, L 14 per minute).
+- **Pairs of hands sharing a piece** (2026-10-11; a Reddit suggestion: hands that coordinate to play the
+  impossible; style `extra_mode` "share" with `extra_hands` extra pairs, against "copies" - the octave clones).
+  - `hand_split.split_among(notes, n)`: the two-hand beam search generalised to n hands, low to high. Each chord
+    is cut into n runs by pitch; for each beam candidate the best `SHARE_KBEST` cuts come from a k-best DP over the
+    hands, each run priced by `_play_cost` (the split's span / load / speed costs, factored out of `_hand_cost`,
+    whose two-hand results are unchanged) plus: notes outside the hand's share of the range (pitch quantiles),
+    reaching past a neighbour's centre, holding more than `SHARE_SPAN` (12) at once (with hands to spare none
+    need stretch), and - between two pianists, whose facing hands can't pass - coming within `SHARE_GAP` of the
+    keys the other spans (`_extent`: at least `SHARE_HAND_W` 9 semitones round what it holds or just played).
+    ~1 s for Ember Fountain with 4 or 6 hands.
+  - `export3d.shared` makes a sub-song per pair (labels "L"/"R", "L2"/"R2", ...; fingering re-planned) and seats
+    each pianist in front of their part (`HandAnimator.seat`: the shoulder moves with it, so forearms come in
+    from their own place). `hands.seat_side_by_side`: each pianist's hand nearest the next one's keeps its wrist
+    `NEIGHBOUR_CLEAR_SPAN` (0.9) hand spans from it while idle (`_neighbour_shift`, measured from where the
+    partner rule already put it - that rule pushes an idle hand away from its own partner, i.e. toward the
+    other pianist).
+  - A generated four-part test (bass octaves, held chords, a 16th arpeggio and a 16th melody over five
+    octaves, 38 s): one pair - 75 notes never pressed, 115 tip frames off their key, 200-246 jolts/min; two pairs
+    sharing - 0, 0, 0; closest the two pianists' hands come: 26 mm. Ember Fountain with 2 / 3 pairs: 0 never
+    pressed, 0 off; the pianists' hands within 15 mm in 4 of 4720 frames.
+  - Shared music is always heard (`video_style.extra_heard`); each pair's notes keep the `extra_hue` turn.
+- **Hands appear one at a time** (2026-10-11; style `hands_enter`, `hands_enter_gap`). `video_style.entrances`:
+  each hand slides in over `ENTER_T` (0.8 s), done `ENTER_READY_T` (0.3 s) before its first strike, in the order
+  the hands first play; the next starts at least `hands_enter_gap` after the one before has arrived, so hands
+  that start together come in one by one ahead of the music, and a pianist who joins later comes in just before
+  their part. `enter_lead` lengthens the video's opening (export `lead`, normally `LEAD_IN_T` 3 s) to fit every
+  entrance. In Blender (`hands_rig.entrance_at`): before its entrance a hand's bones are scaled to `HIDDEN_SCALE`
+  (collapsed - one mesh holds both hands of a pair, so object visibility can't hide one); during it all its
+  points are offset by `ENTER_FROM` (0.45 m toward the player, 0.12 m down) times a smootherstep that eases to 0.
+  The keys, notes, lights and camera use the export's own points and are untouched.
 - **Top travel speed** (2026-09-28; pianist `max_speed`, default 3.0 m/s, 0.5–5): no part of a hand - wrist or
   fingertip - travels faster, and what is heard is what the hands then play.
   - Model (`fingering.travel_time`): moves ease in and out like the animation's smootherstep, whose peak is 1.875× the

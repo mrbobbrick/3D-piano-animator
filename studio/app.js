@@ -1,4 +1,4 @@
-// 3D Video Studio: edits a video_style dict, asks the local server
+// Fallboard (the 3D video studio): edits a video_style dict, asks the local server
 // (video_studio.py) for preview frames, short clips and video renders.
 "use strict";
 
@@ -567,7 +567,7 @@ function drawTimeline() {
   // render range
   if ($("range").value === "part") {
     const a = (+$("from").value || 0) / dur * w, b = (+$("to").value || dur) / dur * w;
-    g.fillStyle = "rgba(255, 206, 84, .10)";
+    g.fillStyle = "rgba(235, 230, 220, .07)";
     g.fillRect(a, 0, Math.max(1, b - a), h);
   }
   for (const [hand, sign] of [["R", -1], ["L", 1]]) {
@@ -587,7 +587,7 @@ function drawTimeline() {
   g.fillStyle = "rgba(255,255,255,.35)";
   for (const p of S.previews) if (!p.song || p.song === S.song) g.fillRect((p.t / dur) * w - 0.5, h - 4, 1.5, 4);
   const x = (S.t / dur) * w;
-  g.fillStyle = "#ffce54";
+  g.fillStyle = "#ebe6dc";
   g.fillRect(x - 1, 0, 2, h);
 }
 
@@ -898,7 +898,7 @@ function showRender(r) {
   } else if (r.state === "cancelled") {
     $("progText").textContent = "Cancelled (frames already made are kept: rendering the same again resumes)";
   }
-  document.title = running ? `${Math.round(pct)}% · 3D Video Studio` : "3D Video Studio";
+  document.title = running ? `${Math.round(pct)}% · Fallboard` : "Fallboard";
   // a small progress pill in the top bar, for when the render card is out of sight
   $("topStatus").hidden = !running;
   if (running) $("topStatusText").textContent = `Rendering ${r.total ? Math.round(pct) + "%" : "…"}${r.queue?.length ? ` · ${r.queue.length} queued` : ""}`;
@@ -1087,6 +1087,15 @@ $("deleteStyle").onclick = async () => {
 };
 menu("resetBtn", "resetMenu");
 menu("moreBtn", "moreMenu");
+menu("appBtn", "appMenu");
+
+// the render panel slides in from the right
+function drawer(open = !document.body.classList.contains("drawer")) {
+  document.body.classList.toggle("drawer", open);
+}
+$("renderToggle").onclick = () => drawer();
+$("closeDrawer").onclick = () => drawer(false);
+$("scrim").onclick = () => drawer(false);
 document.querySelector('[data-reset="tab"]').onclick = () =>
   resetSettings(S.spec.filter((sp) => sp.group === S.tab).map((sp) => sp.id), `The ${S.tab} tab`);
 document.querySelector('[data-reset="style"]').onclick = () => resetSettings(S.spec.map((sp) => sp.id), "Every setting");
@@ -1104,7 +1113,7 @@ $("lightNext").onclick = () => stepLightbox(1);
 $("lightDelete").onclick = () => deletePreviews([S.lookingAt]);
 $("closeLight").onclick = () => $("lightbox").close();
 $("lightbox").onclick = (e) => { if (e.target === $("lightbox")) $("lightbox").close(); };
-$("topStatus").onclick = () => $("renderCard").scrollIntoView({ behavior: "smooth", block: "center" });
+$("topStatus").onclick = () => drawer(true);
 // frames waiting to be deleted go now if the page closes
 window.addEventListener("pagehide", () => {
   if (S.trash) navigator.sendBeacon("/api/previews/delete", JSON.stringify({ ids: S.trash.ids }));
@@ -1153,7 +1162,8 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   if (document.querySelector("dialog[open]")) return;
-  if (e.key === "Escape") closeMenus();
+  if (e.key === "Escape") { closeMenus(); drawer(false); }
+  else if (e.key === "r" || e.key === "R") drawer();
   else if (e.key === " ") { e.preventDefault(); preview(); }
   else if ((e.key === "f" || e.key === "F") && S.lookingAt) openLightbox(S.lookingAt);
   else if (e.key === "Delete" && S.lookingAt) deletePreviews([S.lookingAt]);

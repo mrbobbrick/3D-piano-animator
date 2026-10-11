@@ -1,0 +1,88 @@
+# CLAUDE.md
+
+Guide for working on this repository with Claude Code. Detailed design notes (algorithms,
+constants, measured results) are in `docs/ARCHITECTURE.md` - read the relevant section before
+changing a subsystem, and update it when you change behaviour.
+
+## What this is
+
+A pygame app that plays MIDI files as falling notes above an 88-key keyboard, with
+procedurally animated hands (seen from above) whose fingering is planned automatically, plus a
+fingering editor and a pianist/hand editor. Flat module layout at the repository root; modules
+import each other by name.
+
+## Run
+
+```bash
+pip install -r requirements.txt
+python main.py [song.mid] [--edit] [--no-sound] [--speed X] [--screenshot out.png --at SECONDS]
+```
+
+`--screenshot` renders one frame and exits - useful for checking visual changes without a
+window (combine with `SDL_VIDEODRIVER=dummy`).
+
+3D video (Blender 5.1, realistic hands, falling notes, audio) - see "3D renderer" in
+`docs/ARCHITECTURE.md` for the one-time asset setup:
+
+```bash
+python video_studio.py      # the 3D Video Studio in the browser (also: main menu "3D video studio", key V)
+python render_video.py song.mid [out.mp4] [--style Embers] [--quality flat|fast|balanced|high|max] [--fps 30] [--start S --end S]
+```
+
+## Test
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+Headless (SDL dummy drivers); `tests/conftest.py` redirects `pianist.FOLDER` to a temp dir.
+Add a test for new behaviour where it can be checked numerically (fingering results, detected
+gestures, editor state after scripted keys). Keep tests fast and free of local data.
+
+## Modules
+
+| File | Role |
+|---|---|
+| `main.py` | `App` (window, synth, mode switching, frame clock), `MainMenu`, `Visualizer` (falling notes) |
+| `common.py` | Shared UI and playback: colours, `bottom_layout`, `Keyboard`, `MidiOut`, `Performance`, `Transport`, dialogs, buttons, sliders |
+| `midi_loader.py` | `MidiSong` / `Note`, MIDI + PIG loading, hand assignment, fingering markers, `save_fingered_midi`, `pedal_switches` |
+| `hand_split.py` | Beam search that splits single-track MIDI into hands |
+| `fingering.py` | Fingering planner (beam search over chord states, cost weights, `LEARNED_W`, thumb/pinky pairs, `score_fingering`) |
+| `figures.py` | Figure recognition (scales, arpeggios, chromatic, octaves, repeated notes, trills, double notes) feeding the planner |
+| `hands.py` | `HandGeometry`, `HandAnimator` (per-hand IK, crossings, rolled chords, wrist gestures), hand-crossing layering, skeleton drawing |
+| `skins.py` | Skinned hand drawing (cartoon, gloves, robot) from the pose structure |
+| `pianist.py` | `Pianist` model (anatomy, behaviour settings, skin), storage in `pianists/` |
+| `hand_editor.py` | "Pianists & hands" studio (browser, overview, anatomy, behaviour pages) |
+| `editor.py` | Fingering editor (piano roll, context menus, undo, sequential mode, difficulty, export) |
+| `version.py` | `VERSION`: the latest commit's UTC time as `v20YY.MM.DD.HHMM` (from git, or filled in by `git archive`); shown in the window title and bottom-left corner |
+| `pig_eval.py`, `learn_weights.py` | PIG benchmark and weight tuning (need the dataset locally) |
+| `export3d.py` | Samples both hands' 3D skeletons per frame (metres, black keys raised) with the keyboard and the performance, as JSON for Blender |
+| `render_video.py` | 3D video pipeline: export, performance MIDI -> FluidSynth WAV, Blender frames, ffmpeg |
+| `video_style.py` | The 3D video's look: `SETTINGS` (notes, colours, look, effects, scene, finish), `PRESETS` (Classic, Embers, Neon, ...), note colours, saved styles in `video_styles/` |
+| `video_studio.py`, `studio/` | 3D Video Studio: a local server (127.0.0.1:8765, stdlib only) and its page - edit a style, preview frames (a Blender kept open, `blender/preview_worker.py`), render videos with progress |
+| `blender/` | Run inside Blender: `render3d.py` (entry; `run(argv)`), `scene.py` (keyboard, key motion, notes on a wall or a flat runway, sparks, glow, lights, camera), `flat.py` (Workbench test renders), `hands_rig.py` (skinned hands posed on the export), `hands_stick.py` (stick-figure check), `make_hands.py` (builds `assets/hands.blend` with MPFB), `make_hands_sculpted.py` (builds `assets/hands_sculpted.blend`, the default hands, from Blender Studio's Human Base Meshes), `preview_worker.py` |
+
+## Conventions and gotchas
+
+- The left hand is solved as a mirrored right hand (`fingering.mirror_pitch`, about D4); the
+  keyboard pattern is symmetric about D, so white/black properties survive mirroring.
+- Behaviour settings live in `pianist.BEHAVIORS`; the studio's behaviour page lists them
+  automatically. Read them with `Pianist.b(key)` (e.g. `p.b("wrist_bounce")`) so older pianist files get defaults.
+- Call `hands.pair_hands` on the animators whenever you build them: an idle hand moves out of the playing
+  hand's way (`HandAnimator._placed_at`), and `crossing_episodes` assumes it does.
+- `HandAnimator` is rebuilt whenever fingering changes; the editor defers that rebuild while
+  typing in sequential mode (`_rebuild_due`). `editor.notes` is the song's own list - update
+  `editor.index` when replacing a note object.
+- Nothing in a hand moves faster than the pianist's top speed (`max_speed`): the hand split, the
+  fingering, the timeline (`HandAnimator._speed_schedule`) and the drawn motion all keep to it.
+- Audio (and every lit key or note) follows the hands' performance (`HandAnimator.performance`),
+  not the raw MIDI note times - keys let go early or struck late to keep to the top speed; pedals are sent as switches (`MidiSong.controls`), raw values kept in `raw_controls`.
+- The frame clock is capped (`MAX_FRAME_DT`) so slow loads never jump the song ahead.
+- Keep the fingering planner deterministic; check changes against the PIG test split
+  (`pig_eval.py`) and Hanon when you have the data - see `docs/ARCHITECTURE.md` for the
+  current numbers.
+- Don't commit third-party data (MIDI collections, PIG files, PDFs, reference images) or
+  personal `pianists/` files; `.gitignore` covers them.
+- Windows is the main target (the author's machine); paths go through `os.path`, and file
+  dialogs use tkinter.

@@ -25,7 +25,7 @@ window (combine with `SDL_VIDEODRIVER=dummy`).
 `docs/ARCHITECTURE.md` for the one-time asset setup:
 
 ```bash
-python video_studio.py      # the 3D Video Studio in the browser (also: main menu "3D video studio", key V)
+python video_studio.py      # Fallboard, the 3D video studio in the browser (also: main menu "Fallboard", key V)
 python render_video.py song.mid [out.mp4] [--style Embers] [--quality flat|fast|balanced|high|max] [--fps 30] [--start S --end S]
 ```
 
@@ -60,7 +60,7 @@ gestures, editor state after scripted keys). Keep tests fast and free of local d
 | `export3d.py` | Samples both hands' 3D skeletons per frame (metres, black keys raised) with the keyboard and the performance, as JSON for Blender |
 | `render_video.py` | 3D video pipeline: export, performance MIDI -> FluidSynth WAV, Blender frames, ffmpeg |
 | `video_style.py` | The 3D video's look: `SETTINGS` (notes, colours, look, effects, scene, finish), `PRESETS` (Classic, Embers, Neon, ...), note colours, saved styles in `video_styles/` |
-| `video_studio.py`, `studio/` | 3D Video Studio: a local server (127.0.0.1:8765, stdlib only) and its page - edit a style, preview frames (a Blender kept open, `blender/preview_worker.py`), render videos with progress |
+| `video_studio.py`, `studio/` | Fallboard, the 3D video studio: a local server (127.0.0.1:8765, stdlib only) and its page - edit a style, preview frames (a Blender kept open, `blender/preview_worker.py`), render videos with progress |
 | `blender/` | Run inside Blender: `render3d.py` (entry; `run(argv)`), `scene.py` (keyboard, key motion, notes on a wall or a flat runway, sparks, glow, lights, camera), `flat.py` (Workbench test renders), `hands_rig.py` (skinned hands posed on the export), `hands_stick.py` (stick-figure check), `make_hands.py` (builds `assets/hands.blend` with MPFB), `make_hands_sculpted.py` (builds `assets/hands_sculpted.blend`, the default hands, from Blender Studio's Human Base Meshes), `preview_worker.py` |
 
 ## Conventions and gotchas

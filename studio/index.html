@@ -3,28 +3,35 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>3D Video Studio</title>
+<title>Fallboard</title>
 <link rel="stylesheet" href="/static/studio.css">
 </head>
 <body>
 <header class="top">
-  <div class="brand"><span class="logo">♪</span> Hand-thesia <span class="dim">3D Video Studio</span></div>
+  <div class="brand" title="Fallboard - 3D piano videos from Hand-thesia">Fallboard</div>
   <div class="song">
     <select id="song" title="Song"></select>
-    <label class="btn small" title="Add a MIDI file from anywhere">Add MIDI…<input id="upload" type="file" accept=".mid,.midi" hidden></label>
     <span id="songMeta" class="dim"></span>
+    <label class="link" title="Add a MIDI file from anywhere">Add MIDI<input id="upload" type="file" accept=".mid,.midi" hidden></label>
   </div>
-  <button id="topStatus" class="topStatus" hidden title="Go to the render"><div class="spinner"></div><span id="topStatusText"></span></button>
+  <button id="topStatus" class="topStatus" hidden title="Show the render"><div class="spinner"></div><span id="topStatusText"></span></button>
   <div class="row tight">
-    <button id="undo" class="btn small ghost icon" title="Undo (Ctrl+Z)" disabled>↶</button>
-    <button id="redo" class="btn small ghost icon" title="Redo (Ctrl+Y)" disabled>↷</button>
-    <button id="helpBtn" class="btn small ghost icon" title="Help and keyboard shortcuts (?)">?</button>
-    <button id="quit" class="btn small ghost" title="Stop the studio (renders are cancelled)">Quit</button>
+    <button id="undo" class="icon" title="Undo (Ctrl+Z)" disabled>↶</button>
+    <button id="redo" class="icon" title="Redo (Ctrl+Y)" disabled>↷</button>
+    <div class="menuWrap">
+      <button id="appBtn" class="icon" title="Help, quit">⋯</button>
+      <div id="appMenu" class="menu right" hidden>
+        <button id="helpBtn"><b>Shortcuts and tips</b><span>Keyboard shortcuts ( ? )</span></button>
+        <hr>
+        <button id="quit" class="danger"><b>Quit</b><span>Stop Fallboard (renders are cancelled)</span></button>
+      </div>
+    </div>
+    <button id="renderToggle" class="btn primary" title="Render a video, and your videos">Render</button>
   </div>
 </header>
 
 <main>
-  <aside class="panel side">
+  <aside class="side">
     <section class="styleCard">
       <div class="row between">
         <h2>Style</h2>
@@ -33,9 +40,9 @@
       <div id="presets" class="chips"></div>
       <div id="saved" class="chips"></div>
       <div class="row tools">
-        <button id="saveStyle" class="btn small" title="Keep this look in the list (Ctrl+S)">Save as…</button>
+        <button id="saveStyle" class="link" title="Keep this look in the list (Ctrl+S)">Save as…</button>
         <div class="menuWrap">
-          <button id="resetBtn" class="btn small ghost" title="Put settings back">Reset ▾</button>
+          <button id="resetBtn" class="link" title="Put settings back">Reset</button>
           <div id="resetMenu" class="menu" hidden>
             <button data-reset="tab"><b id="resetTabLabel">Reset this tab</b><span>Only the settings on the open tab, back to the style's values</span></button>
             <button data-reset="style"><b id="resetStyleLabel">Reset all edits</b><span>Every setting back to the style you picked</span></button>
@@ -45,7 +52,7 @@
         </div>
         <span class="grow"></span>
         <div class="menuWrap">
-          <button id="moreBtn" class="btn small ghost icon" title="More: import, export, delete">⋯</button>
+          <button id="moreBtn" class="icon" title="More: import, export, delete">⋯</button>
           <div id="moreMenu" class="menu right" hidden>
             <label class="item"><b>Import…</b><span>Load a style from a .json file</span><input id="importStyle" type="file" accept=".json" hidden></label>
             <button id="exportStyle"><b>Export…</b><span>Save this look as a .json file</span></button>
@@ -55,7 +62,7 @@
       </div>
     </section>
     <div class="finder">
-      <input id="search" type="search" placeholder="Search settings…  ( / )">
+      <input id="search" type="search" placeholder="Search settings">
       <label class="check small" title="Show only settings that differ from the style you picked"><input id="changedOnly" type="checkbox"> Changed</label>
     </div>
     <nav id="tabs" class="tabs"></nav>
@@ -64,59 +71,57 @@
   </aside>
 
   <section class="stage">
-    <div class="panel previewCard">
-      <div id="previewBox" class="previewBox">
-        <img id="previewImg" alt="" hidden title="Click to see it full size">
-        <video id="clipVideo" loop muted playsinline hidden></video>
-        <div id="previewEmpty" class="empty">Pick a moment on the timeline and press <b>Preview frame</b> <kbd>Space</kbd><br>
-          <span class="dim">Blender renders it in a few seconds; <b>Preview clip</b> <kbd>C</kbd> shows 3 s of motion</span></div>
-        <div id="previewBusy" class="busy" hidden><div class="spinner"></div><span id="previewBusyText">Rendering…</span>
-          <button id="cancelClip" class="btn tiny ghost" hidden>Stop</button></div>
-        <div id="previewBadge" class="badge" hidden></div>
-        <div class="boxTools">
-          <button id="fullBtn" class="btn tiny" title="Full size (F)" hidden>⤢ Full size</button>
-          <button id="delShown" class="btn tiny danger" title="Delete this frame (Delete)" hidden>✕ Delete</button>
-        </div>
+    <div id="previewBox" class="previewBox">
+      <img id="previewImg" alt="" hidden title="Click to see it full size">
+      <video id="clipVideo" loop muted playsinline hidden></video>
+      <div id="previewEmpty" class="empty">Pick a moment on the timeline, then <b>Preview</b> <kbd>Space</kbd>
+        <span class="dim">or a 3-second <b>Clip</b> <kbd>C</kbd></span></div>
+      <div id="previewBusy" class="busy" hidden><div class="spinner"></div><span id="previewBusyText">Rendering…</span>
+        <button id="cancelClip" class="link" hidden>Stop</button></div>
+      <div id="previewBadge" class="badge" hidden></div>
+      <div class="boxTools">
+        <button id="fullBtn" class="pill" title="Full size (F)" hidden>Full size</button>
+        <button id="delShown" class="pill danger" title="Delete this frame (Delete)" hidden>Delete</button>
       </div>
-      <div class="timeline">
-        <span id="timeLabel" class="time">0:00.0</span>
-        <canvas id="density" height="44" title="Click or drag to pick a moment. Bars: how many notes start there (right hand above, left below). Ticks at the bottom: frames you've previewed"></canvas>
-        <span id="durLabel" class="time dim">0:00</span>
-      </div>
-      <div class="row wrap controlsRow">
-        <button id="previewBtn" class="btn primary">Preview frame</button>
-        <button id="clipBtn" class="btn" title="3 seconds of video at preview quality (about 1½ minutes)">Preview clip</button>
-        <label class="check" title="Render a new frame a moment after each change"><input id="auto" type="checkbox" checked> Auto</label>
-        <span class="grow"></span>
-        <label class="dim">View <select id="view">
-          <option value="auto" selected>Auto</option><option value="bird">Bird's eye</option>
-          <option value="pianist">Pianist</option><option value="side">Side</option><option value="top">Top</option>
-        </select></label>
-        <label class="dim">Shape <select id="shape">
-          <option value="16:9" selected>16:9 wide</option><option value="9:16">9:16 upright</option><option value="1:1">1:1 square</option>
-        </select></label>
-        <label class="dim">Preview <select id="pquality">
-          <option value="flat" title="Plain colours, quickest">Flat</option><option value="fast" selected>Fast</option>
-          <option value="balanced" title="The final look">Balanced</option>
-        </select></label>
-      </div>
-      <div id="historyWrap" class="historyWrap" hidden>
-        <div class="row between historyHead">
-          <h2>Previews <span id="historyCount" class="count"></span></h2>
-          <div class="row tight">
-            <label class="check small" title="Show the frames of every song, not just this one"><input id="allSongs" type="checkbox"> All songs</label>
-            <button id="clearHistory" class="btn tiny ghost danger" title="Delete every preview frame shown here">Delete all</button>
-          </div>
-        </div>
-        <div id="history" class="history"></div>
-      </div>
-      <div id="previewNote" class="note dim"></div>
     </div>
+    <div class="timeline">
+      <span id="timeLabel" class="time">0:00.0</span>
+      <canvas id="density" height="36" title="Click or drag to pick a moment. Bars: how many notes start there (right hand above, left below). Ticks at the bottom: frames you've previewed"></canvas>
+      <span id="durLabel" class="time dim">0:00</span>
+    </div>
+    <div class="row wrap controlsRow">
+      <button id="previewBtn" class="btn primary">Preview</button>
+      <button id="clipBtn" class="btn" title="3 seconds of video at preview quality (about 1½ minutes)">Clip</button>
+      <label class="check small" title="Render a new frame a moment after each change"><input id="auto" type="checkbox" checked> Auto</label>
+      <span class="grow"></span>
+      <label class="quiet" title="Camera">View <select id="view">
+        <option value="auto" selected>Auto</option><option value="bird">Bird's eye</option>
+        <option value="pianist">Pianist</option><option value="side">Side</option><option value="top">Top</option>
+      </select></label>
+      <label class="quiet" title="Frame shape">Shape <select id="shape">
+        <option value="16:9" selected>16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option>
+      </select></label>
+      <label class="quiet" title="Preview quality">Quality <select id="pquality">
+        <option value="flat" title="Plain colours, quickest">Flat</option><option value="fast" selected>Fast</option>
+        <option value="balanced" title="The final look">Balanced</option>
+      </select></label>
+    </div>
+    <div id="historyWrap" class="historyWrap" hidden>
+      <div class="row between historyHead">
+        <h2>Previews <span id="historyCount" class="count"></span></h2>
+        <div class="row tight">
+          <label class="check small" title="Show the frames of every song, not just this one"><input id="allSongs" type="checkbox"> All songs</label>
+          <button id="clearHistory" class="link danger" title="Delete every preview frame shown here">Delete all</button>
+        </div>
+      </div>
+      <div id="history" class="history"></div>
+    </div>
+    <div id="previewNote" class="note dim"></div>
   </section>
 
-  <section class="dock">
-    <div class="panel renderCard" id="renderCard">
-      <div class="row between"><h2>Render video</h2><span id="estimate" class="estimate"></span></div>
+  <aside class="dock" aria-label="Render">
+    <div class="row between dockHead"><h2>Render</h2><button id="closeDrawer" class="icon" title="Close (Esc)">✕</button></div>
+    <section id="renderCard" class="renderCard">
       <div class="grid">
         <label>Quality <select id="quality">
           <option value="flat">Flat (test)</option>
@@ -134,6 +139,7 @@
         <label class="part" hidden>To (s) <input id="to" type="number" step="0.5" min="0"></label>
         <label class="wide">File name <input id="fname" type="text"></label>
       </div>
+      <div id="estimate" class="estimate"></div>
       <div class="row">
         <span id="resNote" class="dim small"></span>
         <span class="grow"></span>
@@ -141,26 +147,26 @@
       </div>
       <div id="progress" class="progress" hidden>
         <div class="bar"><div id="barFill"></div></div>
-        <div class="row"><span id="progText"></span><span class="grow"></span><button id="cancelBtn" class="btn small ghost">Cancel</button></div>
+        <div class="row"><span id="progText"></span><span class="grow"></span><button id="cancelBtn" class="link">Cancel</button></div>
       </div>
       <div id="queue" class="queue" hidden></div>
-    </div>
-
-    <div class="panel videosCard">
-      <div class="row between"><h2>Videos</h2><button id="openFolder" class="btn small ghost">Open folder</button></div>
+    </section>
+    <section class="videosCard">
+      <div class="row between"><h2>Videos</h2><button id="openFolder" class="link">Open folder</button></div>
       <div id="videos" class="videos"></div>
-    </div>
-  </section>
+    </section>
+  </aside>
 </main>
+<div id="scrim" class="scrim"></div>
 
-<dialog id="player"><video id="video" controls></video><div class="row"><span id="playerName" class="dim"></span><span class="grow"></span><button id="closePlayer" class="btn small">Close</button></div></dialog>
+<dialog id="player"><video id="video" controls></video><div class="row"><span id="playerName" class="dim"></span><span class="grow"></span><button id="closePlayer" class="btn">Close</button></div></dialog>
 <dialog id="lightbox"><img id="lightImg" alt=""><div class="row"><span id="lightName" class="dim"></span><span class="grow"></span>
-  <button id="lightPrev" class="btn small ghost icon" title="Older (←)">‹</button><button id="lightNext" class="btn small ghost icon" title="Newer (→)">›</button>
-  <button id="lightDelete" class="btn small ghost danger" title="Delete this frame (Delete)">Delete</button><button id="closeLight" class="btn small">Close</button></div></dialog>
+  <button id="lightPrev" class="icon" title="Older (←)">‹</button><button id="lightNext" class="icon" title="Newer (→)">›</button>
+  <button id="lightDelete" class="link danger" title="Delete this frame (Delete)">Delete</button><button id="closeLight" class="btn">Close</button></div></dialog>
 <dialog id="help">
   <h2>Keyboard shortcuts</h2>
   <table>
-    <tr><td><kbd>Space</kbd></td><td>Preview frame</td></tr>
+    <tr><td><kbd>Space</kbd></td><td>Preview a frame</td></tr>
     <tr><td><kbd>C</kbd></td><td>Preview a 3-second clip</td></tr>
     <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Move 1 s on the timeline (<kbd>Shift</kbd>: 5 s)</td></tr>
     <tr><td><kbd>F</kbd></td><td>Show the frame full size</td></tr>
@@ -168,17 +174,18 @@
     <tr><td><kbd>Ctrl</kbd> <kbd>Z</kbd> / <kbd>Ctrl</kbd> <kbd>Y</kbd></td><td>Undo / redo a change</td></tr>
     <tr><td><kbd>Ctrl</kbd> <kbd>S</kbd></td><td>Save the style as…</td></tr>
     <tr><td><kbd>/</kbd></td><td>Search settings</td></tr>
+    <tr><td><kbd>R</kbd></td><td>Show or hide the render panel</td></tr>
   </table>
   <h2>Tips</h2>
   <ul class="tips">
-    <li>A changed setting is marked <span class="accent2">•</span>. Its <b>↺</b> button (or a double-click) puts it back to the style's value.</li>
+    <li>A changed setting is marked with a dot. Its <b>↺</b> button (or a double-click) puts it back to the style's value.</li>
     <li>Click a slider's number to type an exact value.</li>
-    <li><b>Reset ▾</b> puts back the open tab, every edit, or everything (<i>Start over</i>). Undo brings any of it back.</li>
+    <li><b>Reset</b> puts back the open tab, every edit, or everything (<i>Start over</i>). Undo brings any of it back.</li>
     <li>Hover a preview thumbnail for <b>Use look</b> (go back to its settings) and <b>✕</b> (delete it).</li>
   </ul>
-  <div class="row"><span class="grow"></span><button id="closeHelp" class="btn small">Close</button></div>
+  <div class="row"><span class="grow"></span><button id="closeHelp" class="btn">Close</button></div>
 </dialog>
-<div id="toast" class="toast" hidden><span id="toastText"></span><button id="toastAction" class="btn tiny" hidden></button></div>
+<div id="toast" class="toast" hidden><span id="toastText"></span><button id="toastAction" class="link" hidden></button></div>
 <script src="/static/app.js"></script>
 </body>
 </html>

@@ -285,7 +285,7 @@ class MainMenu:
                    sub="Open a MIDI file, fine-tune its fingering and export it"),
             Button("Pianists & hands", "pianists", font="button", key_hint="H",
                    sub="Create pianists: hand anatomy, colour and technique; choose the active one"),
-            Button("3D video studio", "studio3d", font="button", key_hint="V",
+            Button("Fallboard (3D videos)", "studio3d", font="button", key_hint="V",
                    sub="Style the falling notes and render a 3D video with realistic hands (in your browser)"),
             Button("Quit", "quit", font="normal", key_hint="Esc"),
         ]
@@ -338,7 +338,7 @@ class MainMenu:
             # open when this window closes, and a second start just reopens the page
             subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                                            "video_studio.py")])
-            self.message = "Opening the 3D video studio in your browser…"
+            self.message = "Opening Fallboard in your browser…"
             return True
         path = pick_file("Open MIDI file" if action == "play" else "Open MIDI file to edit",
                          initialdir=self.app.last_dir)

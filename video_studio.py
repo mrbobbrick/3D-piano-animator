@@ -1,5 +1,5 @@
 """
-video_studio.py - the 3D Video Studio: a page in your browser for styling the
+video_studio.py - Fallboard, the 3D video studio: a page in your browser for styling the
 falling notes (video_style.py), previewing single frames and rendering videos
 (render_video.py). The page talks to this small local server, which runs
 Blender and ffmpeg on this computer; nothing leaves it.
@@ -702,7 +702,7 @@ def already_running(port):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="3D Video Studio (browser)")
+    ap = argparse.ArgumentParser(description="Fallboard - the 3D video studio (in your browser)")
     ap.add_argument("--port", type=int, default=PORT)
     ap.add_argument("--no-browser", action="store_true")
     args = ap.parse_args()
@@ -719,7 +719,7 @@ def main():
     srv.daemon_threads = True
     SERVER[0] = srv
     threading.Thread(target=watchdog, daemon=True).start()
-    print(f"3D Video Studio at {url}", flush=True)
+    print(f"Fallboard at {url}", flush=True)
     if not args.no_browser:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
     srv.serve_forever()

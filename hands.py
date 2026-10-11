@@ -163,6 +163,7 @@ GN_ITERS = 8
 GN_DAMPING = 0.05
 HAND_SMOOTH_T = 0.07        # the hand's motion is averaged over +-this many seconds
 HAND_GRID_T = 1 / 120       # ...from poses solved on this time grid
+ROLL_LAND_T = 0.13           # s a rolled chord's note is down before a note out of its reach is struck
 
 # Anticipation
 ANTIC_T = 0.4               # the hand starts leaning toward a note this long before it
@@ -208,8 +209,9 @@ TIP_ARM_IN = 7.0            # in, how far the fingertips swing out from the wris
 LIMIT_RESTART_T = 0.5       # s, the speed limit's chain restarts this far back after a seek
 LIMIT_GRID_T = 1 / 60       # s, the speed limit steps on this grid (linear in between)
 LIMIT_SMOOTH_HAND = 3       # grid steps each side the limited hand is averaged over...
-LIMIT_SMOOTH_HAND_ON = 1    # ...and while its fingers are on keys
+LIMIT_SMOOTH_HAND_ON = 3    # ...and while its fingers are on keys
 LIMIT_SMOOTH_TIPS = 3       # ...and the fingertips
+PIN_EASE_T = 0.12            # s a fingertip eases between pinned on its key and its smoothed path
 SHAPE_FALLOFF = 0.6         # idle fingers follow a busy neighbour by this much per finger
 
 
@@ -552,39 +554,42 @@ class HandAnimator:
                         e = min(e, max(s0 + 0.5 * (s1 - s0), s1 - self._jump_lift(n, nx)))
                 ends.append(max(e, s0 + 1e-3))
             self.finger_ends[f] = ends
-        # A held key that the next chord's fingers have to cross (5 landing
+        # A held key that a later chord's fingers have to cross (5 landing
         # left of a held 2, say - anything but the thumb passing under) is
         # let go early too, so the hand isn't asked to do both at once.
-        # So is one that a new chord is out of reach of (a leap while the
-        # last notes are still down): the hand can't be on both.
+        # So is one that a later chord is out of reach of (a leap while the
+        # last notes are still down): the hand can't be on both. Every chord
+        # struck while the key is still held counts, not just the next one:
+        # a bass note held through a broken chord can be out of reach of its
+        # third or fourth note (whose finger then landed a key or two short).
         from fingering import MAX_SPAN
         starts = [g[0] for g in self.groups]
         for f, ns in self.by_finger.items():
             for i, n in enumerate(ns):
                 s0 = so[id(n)]
                 gi = bisect.bisect_right(starts, n.start + 1e-6)
-                if gi >= len(self.groups) or starts[gi] > self.finger_ends[f][i] + 0.1:
-                    continue
-                for m in self.groups[gi][1]:
-                    g = self.fingering[id(m)]
-                    if g == f or m.pitch == n.pitch:
-                        continue
-                    vn, vm = self.vp(n.pitch), self.vp(m.pitch)
-                    if abs(key_pos(vm) - key_pos(vn)) > MAX_SPAN[(min(f, g), max(f, g))] + 0.5:
-                        lift = self.early_lift
-                    elif 1 in (f, g):
-                        # a wide thumb-under / finger-over: not quite legato
-                        if is_crossing(vn, f, vm, g) and abs(key_pos(vm) - key_pos(vn)) > 2.0:
-                            lift = CROSS_LIFT_T
+                while gi < len(self.groups) and starts[gi] <= self.finger_ends[f][i] + 0.1:
+                    for m in self.groups[gi][1]:
+                        g = self.fingering[id(m)]
+                        if g == f or m.pitch == n.pitch:
+                            continue
+                        vn, vm = self.vp(n.pitch), self.vp(m.pitch)
+                        if abs(key_pos(vm) - key_pos(vn)) > MAX_SPAN[(min(f, g), max(f, g))] + 0.5:
+                            lift = self.early_lift
+                        elif 1 in (f, g):
+                            # a wide thumb-under / finger-over: not quite legato
+                            if is_crossing(vn, f, vm, g) and abs(key_pos(vm) - key_pos(vn)) > 2.0:
+                                lift = CROSS_LIFT_T
+                            else:
+                                continue
+                        elif (g > f) != (vm > vn):
+                            lift = self.early_lift
                         else:
                             continue
-                    elif (g > f) != (vm > vn):
-                        lift = self.early_lift
-                    else:
-                        continue
-                    sm = so[id(m)]
-                    e = max(s0 + 0.5 * (sm - s0), sm - lift)
-                    self.finger_ends[f][i] = max(s0 + 1e-3, min(self.finger_ends[f][i], e))
+                        sm = so[id(m)]
+                        e = max(s0 + 0.5 * (sm - s0), sm - lift)
+                        self.finger_ends[f][i] = max(s0 + 1e-3, min(self.finger_ends[f][i], e))
+                    gi += 1
         # Nothing travels faster than the pianist's top speed: keys are let
         # go early enough to get to the next ones, or those are struck late.
         self._speed_schedule()
@@ -894,12 +899,39 @@ class HandAnimator:
             mid = grids[n][1]
             q = cache[k] = {}
             for f in mid:
-                if self._pressing(f, k * LIMIT_GRID_T):
-                    q[f] = mid[f]              # a finger on its key stays exactly there
-                else:
-                    q[f] = (sum(w * g_[f][0] for w, g_ in grids) / ws,
-                            sum(w * g_[f][1] for w, g_ in grids) / ws, mid[f][2])
+                # a finger on its key stays exactly there. Switching straight to the averaged
+                # path when it let go (or from it when it struck) jolted it sideways - the
+                # twitch - so it eases between the spots where it holds its keys and that path
+                q[f] = self._eased_tip(f, k, mid[f], grids, ws)
         return q
+
+    def _eased_tip(self, f, k, mid, grids, ws):
+        """
+        Finger f's tip on grid step k: on its key while it holds it; between
+        keys, the averaged path, eased in from the spot where it let go and out
+        to the spot where it strikes over PIN_EASE_T each; with less than twice
+        that between them, one smooth arc from key to key.
+        """
+        t, g = k * LIMIT_GRID_T, LIMIT_GRID_T
+        starts, ends = self.finger_starts[f], self.finger_ends[f]
+        i = bisect.bisect_right(starts, t) - 1
+        if i >= 0 and t < ends[i]:
+            return mid
+        k_off = math.ceil(ends[i] / g) - 1 if i >= 0 else None          # last step on the key it left
+        k_on = math.ceil(starts[i + 1] / g) if i + 1 < len(starts) else None   # first on the next one
+        if k_off is not None and k_on is not None and starts[i + 1] - ends[i] < 2 * PIN_EASE_T:
+            a, b = self._limited_tip_grid(k_off)[f], self._limited_tip_grid(k_on)[f]
+            u = _smooth((k - k_off) / max(1, k_on - k_off))
+            return (a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, mid[2])
+        x = sum(w * g_[f][0] for w, g_ in grids) / ws
+        y = sum(w * g_[f][1] for w, g_ in grids) / ws
+        for kk, gap in ((k_off, t - ends[i] if i >= 0 else math.inf),
+                        (k_on, starts[i + 1] - t if i + 1 < len(starts) else math.inf)):
+            if kk is not None and gap < PIN_EASE_T:
+                w = 1.0 - _smooth(gap / PIN_EASE_T)
+                spot = self._limited_tip_grid(kk)[f]
+                x, y = x + (spot[0] - x) * w, y + (spot[1] - y) * w
+        return (x, y, mid[2])
 
     def _limited_tip_grid(self, k):
         cache = self._tip_limit_cache
@@ -1208,14 +1240,21 @@ class HandAnimator:
                 continue
             self.rolled += 1
             order = sorted(ns, key=lambda n: n.pitch)            # bottom to top, both hands
-            for k, n in enumerate(order):
-                so[id(n)] = n.start + k * self.roll_dt
-            top = order[-1]
-            ft, pt = self.fingering[id(top)], pos(top)
-            for n in order[:-1]:
-                f = self.fingering[id(n)]
-                if f != ft and abs(pt - pos(n)) > reach(f, ft):
-                    eo[id(n)] = min(eo[id(n)], so[id(top)] + 0.02)
+            # Each note follows the one below by roll_dt, but waits until every
+            # lower note it can't be held together with has been down ROLL_LAND_T
+            # (its finger needs that long to land), and those let go just before
+            # it: a finger struck in passing while the hand was already leaving
+            # for the top of the chord never got its key down.
+            for k, m in enumerate(order):
+                fm, pm = self.fingering[id(m)], pos(m)
+                t = m.start if k == 0 else max(m.start, so[id(order[k - 1])] + self.roll_dt)
+                clash = [n for n in order[:k]
+                         if self.fingering[id(n)] != fm and abs(pm - pos(n)) > reach(self.fingering[id(n)], fm)]
+                if clash:
+                    t = max(t, max(so[id(n)] for n in clash) + ROLL_LAND_T)
+                so[id(m)] = t
+                for n in clash:
+                    eo[id(n)] = min(eo[id(n)], t - 0.005)
             for n in order:
                 eo[id(n)] = max(eo[id(n)], so[id(n)] + 0.03)
 

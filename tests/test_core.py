@@ -218,6 +218,47 @@ def test_held_key_is_let_go_before_a_leap():
     assert ends[84] <= 0.5 - 0.1
 
 
+def test_held_bass_note_is_let_go_before_a_later_note_out_of_reach():
+    # left hand: D2 held under a broken chord whose third note (E3, a 9th up on 2) can't be
+    # reached while it is down - it used to be checked against the next note only
+    ns = [Note(38, 0.0, 1.0, 80, 1, LEFT, finger=5), Note(45, 0.3, 1.0, 80, 1, LEFT, finger=3),
+          Note(52, 0.6, 1.0, 80, 1, LEFT, finger=2)]
+    a = hands.HandAnimator(song_of(ns), LEFT)
+    ends = {n.pitch: e for s, e, n in a.performance}
+    assert ends[38] <= 0.6
+
+
+def test_rolled_chord_waits_for_each_finger_to_land():
+    # a 10th: the top note can't be held with the thumb or the index, so it is struck only after
+    # they have been down ROLL_LAND_T, and they let go just before it
+    ns = [Note(p, 0.0, 1.0, 80, 0, RIGHT, finger=f) for p, f in ((66, 1), (69, 2), (73, 3), (81, 5))]
+    a = hands.HandAnimator(song_of(ns), RIGHT)
+    assert a.rolled == 1
+    press = {n.pitch: (s, e) for s, e, n in a.performance}
+    for low in (66, 69):
+        assert press[81][0] - press[low][0] >= hands.ROLL_LAND_T - 1e-6
+        assert press[low][1] <= press[81][0]
+    assert press[66][0] < press[69][0] < press[73][0] < press[81][0]
+
+
+def test_fingers_ease_off_their_keys_without_a_jolt():
+    import pygame
+    from common import Keyboard, bottom_layout
+    pygame.init()
+    # the thumb goes back and forth between two keys 0.2 s apart: it used to be held exactly on
+    # its key and then switched to its smoothed path the moment it let go (0.24 white keys per
+    # frame squared at 120 fps); now it eases off (0.04)
+    ns = []
+    for k in range(6):
+        t = 0.5 + k * 0.4
+        ns.append(Note(60 if k % 2 == 0 else 64, t, t + 0.2, 80, 0, RIGHT, finger=1))
+    kb = Keyboard(bottom_layout((1600, 900))[0])
+    a = hands.HandAnimator(song_of(ns, 3.5), RIGHT)
+    fps = 120
+    xs = [a.pose(i / fps, kb)["struct"]["chains"][1][-1][0] for i in range(int(3.2 * fps))]
+    acc = [abs(xs[i] - 2 * xs[i - 1] + xs[i - 2]) for i in range(2, len(xs))]
+    assert max(acc) < 0.1 * kb.white_w
+
 def test_hand_split_keeps_to_the_top_speed():
     import hand_split
     import fingering as F

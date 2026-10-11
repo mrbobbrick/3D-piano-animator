@@ -855,7 +855,9 @@ class Scene:
             if k is None or n["release"] < self.t0 - 3 or n["press"] > t_end or not self.is_shown(ni):
                 continue
             x0, x1 = self.lane(k)
-            loud = 0.5 + n["velocity"] / 127.0
+            # loud notes throw more sparks, as much more as they glow brighter (velocity_glow):
+            # x(0.2 .. 1.8) by velocity at 100%, the same for every note at 0
+            loud = 1.0 + st["velocity_glow"] * (1.6 * n["velocity"] / 127.0 - 0.8)
             births = [n["press"] + rng.uniform(0.0, 0.05) for _ in range(int(round(burst * loud)))]
             held = max(0.0, n["release"] - n["press"])
             births += [n["press"] + rng.uniform(0.0, held) for _ in range(int(trickle * held))]

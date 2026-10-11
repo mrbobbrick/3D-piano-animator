@@ -262,9 +262,9 @@ PRESETS = {
     "Classic": dict(layout="wall"),
     "Embers": dict(
         color_mode="fire", fire=1.0, fire_speed=1.0, glow=1.2, play_glow=1.6, play_whiten=0.1, flash=2.0,
-        rim=0.8, gradient=0.6, gloss=0.1, note_round=0.35, black_shade=0.15, velocity_glow=0.4,
-        sparks=26, spark_trickle=18, spark_speed=0.22, spark_float=0.7, spark_life=1.4, spark_size=0.0011,
-        spark_glow=14.0, spark_whiten=0.3, hit_glow=10.0, hit_glow_height=0.13, hit_flames=True,
+        rim=0.8, gradient=0.6, gloss=0.1, note_round=0.35, black_shade=0.15, velocity_glow=0.8,
+        sparks=12, spark_trickle=6, spark_speed=0.22, spark_float=0.7, spark_life=1.4, spark_size=0.0011,
+        spark_glow=8.0, spark_whiten=0.3, hit_glow=10.0, hit_glow_height=0.13, hit_flames=True,
         note_lights=2.2, key_tint=0.8, wall_color=(5, 4, 3), world_color=(4, 3, 3), ambient=0.02,
         light_level=0.08, note_window=5.0, hit_line=3.0, hit_line_color=(255, 140, 50),
         title_color=(255, 190, 120), reverb=0.5, reverb_room=0.7, dust=0.8, dust_color=(255, 150, 60),

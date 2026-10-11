@@ -8,11 +8,11 @@
 </head>
 <body>
 <header class="top">
-  <div class="brand" title="Fallboard - 3D piano videos from Hand-thesia">Fallboard</div>
+  <div class="brand" title="Fallboard - 3D piano videos from Hand-thesia"><span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v9M12 4v9M16 4v9M8 13v7M12 13v7M16 13v7"/></svg></span><span class="name">Fallboard</span></div>
   <div class="song">
     <select id="song" title="Song"></select>
     <span id="songMeta" class="dim"></span>
-    <label class="link" title="Add a MIDI file from anywhere">Add MIDI<input id="upload" type="file" accept=".mid,.midi" hidden></label>
+    <label class="btn ghost small" title="Add a MIDI file from anywhere"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>Add MIDI<input id="upload" type="file" accept=".mid,.midi" hidden></label>
   </div>
   <button id="topStatus" class="topStatus" hidden title="Show the render"><div class="spinner"></div><span id="topStatusText"></span></button>
   <div class="row tight">
@@ -74,7 +74,7 @@
     <div id="previewBox" class="previewBox">
       <img id="previewImg" alt="" hidden title="Click to see it full size">
       <video id="clipVideo" loop muted playsinline hidden></video>
-      <div id="previewEmpty" class="empty">Pick a moment on the timeline, then <b>Preview</b> <kbd>Space</kbd>
+      <div id="previewEmpty" class="empty"><div class="emptyIcon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>Pick a moment on the timeline, then <b>Preview</b> <kbd>Space</kbd>
         <span class="dim">or a 3-second <b>Clip</b> <kbd>C</kbd></span></div>
       <div id="previewBusy" class="busy" hidden><div class="spinner"></div><span id="previewBusyText">Rendering…</span>
         <button id="cancelClip" class="link" hidden>Stop</button></div>

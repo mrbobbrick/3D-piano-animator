@@ -211,6 +211,28 @@ def _fit_spans(pianist):
 
 
 MAX_SPEED = 3.0          # m/s, from the pianist (split_hands)
+BIG_CHORD = 12           # chords with more notes than this try only a few splits (_split_points)
+
+
+def _split_points(ns, rh, lh, last_k):
+    """
+    Where to try cutting a chord (sorted) between the hands: everywhere for an
+    ordinary chord. A huge one ("black MIDI": a hundred notes at once) can't be
+    played by two hands however it's cut, and trying every cut made loading
+    such files take minutes, so it tries only the middle, the widest gap, the
+    point between the hands, the last split and the ends (each give or take two).
+    """
+    m = len(ns)
+    if m <= BIG_CHORD:
+        return range(m + 1)
+    gaps = [ns[i + 1].pitch - ns[i].pitch for i in range(m - 1)]
+    widest = max(range(m - 1), key=lambda i: gaps[i]) + 1
+    between = (rh.center + lh.center) / 2
+    cross = next((i for i, n in enumerate(ns) if n.pitch > between), m)
+    out = set()
+    for c in (m // 2, widest, cross, last_k if last_k is not None else m // 2, 0, m):
+        out.update(k for k in range(c - 2, c + 3) if 0 <= k <= m)
+    return sorted(out)
 
 
 def split_hands(notes, pianist=None):
@@ -250,19 +272,30 @@ def split_hands(notes, pianist=None):
             [n.pitch for n in last_group[1]] == [n.pitch for n in ns]
         last_group = (t, ns)
         cand = []
+        tracks = [getattr(n, "track", 0) for n in ns] if multi else None
         for bi, (cost, rh, lh, _, pk, tr) in enumerate(beam):
-            last = dict(tr)
-            for k in range(len(ns) + 1):              # lowest k notes -> left hand
+            if multi:
+                # a track's notes switching hand: what each note costs in either hand, summed
+                # once per chord (lowest k to the left: left[k] + right[k])
+                last = dict(tr)
+                sw = [(TRACK_SWITCH if p and p[0] != LEFT and t - p[1] < TRACK_T else 0.0,
+                       TRACK_SWITCH if p and p[0] != RIGHT and t - p[1] < TRACK_T else 0.0)
+                      for p in (last.get(trk) for trk in tracks)]
+                left = [0.0]
+                for a, _ in sw:
+                    left.append(left[-1] + a)
+                right = [0.0]
+                for _, b in reversed(sw):
+                    right.append(right[-1] + b)
+                right.reverse()
+            for k in _split_points(ns, rh, lh, pk):   # lowest k notes -> left hand
                 ln, rn = ns[:k], ns[k:]
                 c = cost + _hand_cost(rh, t, rn, RIGHT, lh) + _hand_cost(lh, t, ln, LEFT, rh)
                 if repeat and k != pk:
                     c += REPEAT_SPLIT
                 c += _crowding(rh, lh, t, rn, ln)
                 if multi:
-                    for n, h in [(n, LEFT) for n in ln] + [(n, RIGHT) for n in rn]:
-                        prev = last.get(getattr(n, "track", 0))
-                        if prev and prev[0] != h and t - prev[1] < TRACK_T:
-                            c += TRACK_SWITCH
+                    c += left[k] + right[k]
                 cand.append((c, bi, k))
         cand.sort(key=lambda x: x[0])
         new, seen = [], set()
@@ -401,6 +434,15 @@ def split_among(notes, n, pianist=None):
                         if occ is not None and own[1] > occ[0] - SHARE_GAP:
                             c += SHARE_GAP_COST * (own[1] - occ[0] + SHARE_GAP)
                 return c
+            if m > 5 * n:
+                # more notes than all the hands can hold (black MIDI): shared out evenly by pitch
+                cuts = tuple(round(m * (i + 1) / n) for i in range(n))
+                a, c = 0, 0.0
+                for i, b in enumerate(cuts):
+                    c += run_cost(i, a, b)
+                    a = b
+                cand.append((cost + c, bi, cuts))
+                continue
             # the best few ways to cut the chord into n runs (k-best over the hands in turn)
             best = [[[] for _ in range(m + 1)] for _ in range(n + 1)]
             best[0][0] = [(0.0, ())]

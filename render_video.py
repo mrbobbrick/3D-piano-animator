@@ -65,6 +65,27 @@ def performance_midi(data, path, extra_heard=True):
     pm.write(path)
 
 
+def file_midi(source, data, path):
+    """
+    Every note in the MIDI file itself (audio_source "file"), shifted so the video's first frame
+    is 0 s, cut to the video: for music the hands can't all play.
+    """
+    import pretty_midi
+    shift, length = -data["t0"], data["frames"] / data["fps"]
+    pm = pretty_midi.PrettyMIDI(source)
+    for ins in pm.instruments:
+        ins.notes = [pretty_midi.Note(velocity=max(1, min(127, n.velocity)), pitch=min(127, max(0, n.pitch)),
+                                      start=n.start + shift, end=n.end + shift)
+                     for n in ins.notes if n.end + shift > 0 and n.start + shift < length]
+        for n in ins.notes:
+            n.start = max(0.0, n.start)
+        ins.control_changes = [pretty_midi.ControlChange(c.number, c.value, max(0.0, c.time + shift))
+                               for c in ins.control_changes if c.time + shift < length]
+        ins.pitch_bends = []
+    pm.instruments = [i for i in pm.instruments if i.notes and not i.is_drum]
+    pm.write(path)
+
+
 def find_style(name):
     """A preset, a saved style (by name) or a JSON file -> style dict."""
     if name in video_style.PRESETS:
@@ -152,7 +173,10 @@ def main():
     stage("stage", "audio")
     mid = os.path.join(work, "performance.mid")
     wav = os.path.join(work, "performance.wav")
-    performance_midi(data, mid, video_style.extra_heard(style))
+    if style["audio_source"] == "file":
+        file_midi(args.midi, data, mid)
+    else:
+        performance_midi(data, mid, video_style.extra_heard(style))
     run([FLUIDSYNTH, "-ni", "-q", "-g", f"{style['audio_gain']:.2f}", "-r", str(SAMPLE_RATE),
          "-R", "1" if style["reverb"] > 0 else "0",
          "-o", f"synth.reverb.level={style['reverb']:.2f}", "-o", f"synth.reverb.room-size={style['reverb_room']:.2f}",

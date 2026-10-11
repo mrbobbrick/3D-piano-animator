@@ -161,3 +161,29 @@ def test_opening_is_long_enough_for_every_hand_to_come_in():
     st = V.resolve({"hands_enter": True, "extra_hands": 1, "extra_mode": "share"})
     e = V.entrances({h: 10.0 for h in ("R", "L", "R2", "L2")}, st)
     assert 10.0 - V.enter_lead(st) < min(a for a, _ in e.values())
+
+
+def test_black_midi_chords_load_quickly_and_share_out(tmp_path):
+    # "black MIDI" (Rush E): chords of a hundred notes at once
+    import time
+    import hand_split
+    import render_video
+    from midi_loader import Note
+    ns = [Note(p, k * 0.1, k * 0.1 + 0.09, 90, p % 4, "R") for k in range(40) for p in range(24, 104)]
+    t = time.time()
+    two = hand_split.split_hands(ns)
+    assert set(two) == {id(n) for n in ns} and time.time() - t < 10
+    eight = hand_split.split_among(ns, 8)                   # more notes than 8 hands can hold
+    assert set(eight.values()) == set(range(8))
+    # the sound can be the whole file rather than what the hands play
+    assert V.resolve()["audio_source"] == "hands"
+    import pretty_midi
+    pm = pretty_midi.PrettyMIDI()
+    ins = pretty_midi.Instrument(0)
+    ins.notes = [pretty_midi.Note(80, 60 + k % 12, k * 0.5, k * 0.5 + 0.4) for k in range(20)]
+    pm.instruments.append(ins)
+    src, out = str(tmp_path / "in.mid"), str(tmp_path / "out.mid")
+    pm.write(src)
+    render_video.file_midi(src, {"t0": 2.0, "frames": 120, "fps": 30}, out)
+    starts = sorted(n.start for i in pretty_midi.PrettyMIDI(out).instruments for n in i.notes)
+    assert len(starts) == 8 and abs(starts[0]) < 1e-3          # the notes from 2 s to 6 s, from 0 s

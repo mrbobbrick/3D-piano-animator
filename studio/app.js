@@ -559,6 +559,7 @@ function drawTimeline() {
   g.scale(dpr, dpr);
   g.clearRect(0, 0, w, h);
   if (!S.info) return;
+  const css = getComputedStyle(document.documentElement), ink = (v) => css.getPropertyValue(v).trim();
   const dur = S.info.duration || 1;
   const d = S.info.density || {};
   const n = (d.R || d.L || []).length || 1;
@@ -567,7 +568,7 @@ function drawTimeline() {
   // render range
   if ($("range").value === "part") {
     const a = (+$("from").value || 0) / dur * w, b = (+$("to").value || dur) / dur * w;
-    g.fillStyle = "rgba(235, 230, 220, .07)";
+    g.fillStyle = ink("--hover");
     g.fillRect(a, 0, Math.max(1, b - a), h);
   }
   for (const [hand, sign] of [["R", -1], ["L", 1]]) {
@@ -581,13 +582,13 @@ function drawTimeline() {
     });
   }
   g.globalAlpha = 1;
-  g.fillStyle = "rgba(255,255,255,.08)";
+  g.fillStyle = ink("--line");
   g.fillRect(0, mid - 0.5, w, 1);
   // previews already rendered, and the cursor
-  g.fillStyle = "rgba(255,255,255,.35)";
+  g.fillStyle = ink("--faint");
   for (const p of S.previews) if (!p.song || p.song === S.song) g.fillRect((p.t / dur) * w - 0.5, h - 4, 1.5, 4);
   const x = (S.t / dur) * w;
-  g.fillStyle = "#ebe6dc";
+  g.fillStyle = ink("--text");
   g.fillRect(x - 1, 0, 2, h);
 }
 
@@ -1179,3 +1180,5 @@ document.addEventListener("keydown", (e) => {
 });
 
 init().catch((e) => toast("Could not start: " + e.message, true));
+// the timeline is drawn in the theme's colours: redraw when the system switches light / dark
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawTimeline);

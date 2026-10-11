@@ -515,6 +515,21 @@ Detailed design notes, kept up to date as features were added. Start with `CLAUD
   - Results (original -> now). Ember Fountain: never pressed 15 -> 0; tips off 741 frames (worst 2.3 keys) -> 10
     (0.6); jolts/min R 30 -> 5, L 85 -> 14; wrist p99 R 22 -> 11, L 36 -> 19 m/s². Octave test: off 34 -> 7;
     jolts R 76 -> 5, L 27 -> 5. Demo: L jolts 42 -> 16, fingertip jerk p99.9 10221 -> 3961 m/s³.
+- **A rounder hand, not a claw** (2026-10-11; viewers saw "spiders", "xenomorph facehuggers"). Measured on the
+  export (Ember Fountain), the middle finger's first phalanx rose 20° from its knuckle and the next two dived at
+  −57° / −66°: knuckle joints bent back 15° on average (more than 20° in 25-37% of frames), middle joints at
+  65-70°, the knuckles 44 mm above the keys with the fingertips only ~46 mm in front of them. The finger chain has
+  one solution for a given tip (`solve_chain`), so the shape comes from where the hand is. Raising the whole hand
+  or setting the fingertips further forward fixed the shape but lost stretches (a 2-5 reach of a 7th while the
+  index holds its key): the thumb and the little finger already play at 91-99% of their length, while 2-4 have
+  20+ mm to spare. So only the knuckles of 2-4 are drawn higher (`arch_at`, `ARCH_RAISE_IN` 0.6 in), each as far
+  as its finger still reaches its tip at `ARCH_REACH` 95% of its length; the room is the least over ±8 grid
+  steps then averaged over as many, so a knuckle settles ahead of a stretch. Solver, fingertips and keys are
+  untouched. Ember Fountain: knuckle joint −15° -> +7-10° (bent back > 20°: 37% -> 6% of frames), middle joints
+  65-70° -> 56-60°, middle knuckle 44 -> 59 mm; still 0 notes missed, tips off and jolts unchanged. The palm now
+  slopes up 16° from the wrist: the wrist can't rise with it, as it carries the thumb's root. The export passes
+  the raise per frame ("arch"); `hands_rig` takes the palm's frame from the unraised knuckles and adds the raise
+  to the sculpt's own knuckles 2-4, so the arch doesn't tilt the whole palm.
 - **Top travel speed** (2026-09-28; pianist `max_speed`, default 3.0 m/s, 0.5–5): no part of a hand - wrist or
   fingertip - travels faster, and what is heard is what the hands then play.
   - Model (`fingering.travel_time`): moves ease in and out like the animation's smootherstep, whose peak is 1.875× the

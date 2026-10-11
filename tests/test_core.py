@@ -1,4 +1,5 @@
 """Loading, fingering, pedals and hand crossings - no window needed."""
+import bisect
 import math
 
 from conftest import midi_path
@@ -258,6 +259,30 @@ def test_fingers_ease_off_their_keys_without_a_jolt():
     xs = [a.pose(i / fps, kb)["struct"]["chains"][1][-1][0] for i in range(int(3.2 * fps))]
     acc = [abs(xs[i] - 2 * xs[i - 1] + xs[i - 2]) for i in range(2, len(xs))]
     assert max(acc) < 0.1 * kb.white_w
+
+def test_middle_knuckles_arch_without_losing_their_keys():
+    import pygame
+    from common import Keyboard, bottom_layout
+    pygame.init()
+    # five-finger position, each finger in turn: the knuckles of 2-4 are drawn higher than
+    # placed (a rounder hand, not a claw) while every pressed fingertip stays on its key
+    ns = [Note(60 + (0, 2, 4, 5, 7)[k % 5], 0.5 + 0.3 * k, 0.78 + 0.3 * k, 80, 0, RIGHT, finger=1 + k % 5)
+          for k in range(15)]
+    kb = Keyboard(bottom_layout((1600, 900))[0])
+    a = hands.HandAnimator(song_of(ns, 5.5), RIGHT)
+    raised = []
+    for i in range(10, 50):
+        t = i / 10
+        pose = a.pose(t, kb)
+        arch = a.arch_at(t)
+        assert all(0.0 <= r <= hands.ARCH_RAISE_IN * a.ppi + 1e-6 for r in arch.values())
+        raised.append(arch[3])
+        for f in range(1, 6):
+            if a._pressing(f, t):
+                n = a.by_finger[f][bisect.bisect_right(a.finger_starts[f], t) - 1]
+                tip = pose["struct"]["chains"][f][-1]
+                assert abs(tip[0] - kb.key_rects[n.pitch].centerx) < 0.1 * kb.white_w
+    assert sorted(raised)[len(raised) // 2] > 0.5 * hands.ARCH_RAISE_IN * a.ppi
 
 def test_hand_split_keeps_to_the_top_speed():
     import hand_split

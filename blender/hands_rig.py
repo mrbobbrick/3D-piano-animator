@@ -62,6 +62,7 @@ PALM_ROOTS = (0, 4, 9, 14, 19)      # thumb CMC and the metacarpals' bases: plac
 # finger bent to reach the exported fingertip (the others stretch every bone onto the exported joints)
 SOLVED = {"sculpted"}
 KNUCKLES = (5, 10, 15, 20)
+ARCH_KNUCKLES = (5, 10, 15)         # the knuckles export3d's "arch" raises (fingers 2-4)
 CHAINS = [(0, (1, 2, 3))] + [(5 + 5 * k, (6 + 5 * k, 7 + 5 * k, 8 + 5 * k)) for k in range(4)]   # (root, joints)
 BEND_MAX = math.radians(125)       # the most the solver bends a finger's middle joint
 THUMB_REACH = 0.98                 # share of its full length the sculpted thumb reaches before the hand moves
@@ -325,17 +326,24 @@ def build_pair(sc, hands, model="sculpted"):
         head01 = rig.data.bones["lowerarm01" + s].head_local.copy()
         head02 = rig.data.bones["lowerarm02" + s].head_local.copy()
         frames = hd["frames"]
+        arches = hd.get("arch") or [[0.0, 0.0, 0.0]] * len(frames)
         n_fr = len(frames)
         chans = {n: ([], [], []) for n in names}       # loc, quat, scale per frame
         g = None
-        for fr in frames:
+        for fr, arch in zip(frames, arches):
             p = [Vector(fr[3 * i:3 * i + 3]) for i in range(27)]
             for i, dz in lifts.items():
                 p[i].z += dz
             p.append((p[24] + p[25]) / 2)
+            # the knuckles of fingers 2-4 come raised (export3d "arch"): the palm's frame is taken
+            # from where the hand solver had them, so the arch doesn't tilt the whole palm
+            raised = dict(zip(ARCH_KNUCKLES, arch))
+            flat = list(p)
+            for i, dz in raised.items():
+                flat[i] = p[i] - Vector((0.0, 0.0, dz))
             if g is None:
                 g = hand_scale(p, rp) if solved else (p[MCP5] - p[MCP2]).length / (rp[MCP5] - rp[MCP2]).length
-            dref = refs(p)
+            dref = refs(flat)
             pose = {}
             # the palm and the forearm are rigid round the wrist, in the rig's own proportions: the
             # wrist joint at the exported one, turned with the palm; the metacarpals' and the thumb's
@@ -343,7 +351,7 @@ def build_pair(sc, hands, model="sculpted"):
             # higher, and dragged the wrist into a lump); the forearm turned with the arm, its bones
             # where the rig has them relative to the wrist (they don't end exactly at it)
             w0, wr = p[27], rp[27]
-            palm = frame_of(p[MCP3] - w0, dref["side"]) @ frame_of(rp[MCP3] - wr, rref["side"]).transposed()
+            palm = frame_of(flat[MCP3] - w0, dref["side"]) @ frame_of(rp[MCP3] - wr, rref["side"]).transposed()
             if solved:
                 thumb_len = sum((rp[k + 1] - rp[k]).length for k in range(3)) * g
                 shift = thumb_shift(w0 + palm @ ((rp[0] - wr) * g), p[3], thumb_len)
@@ -360,7 +368,7 @@ def build_pair(sc, hands, model="sculpted"):
                 # the knuckles too are rigid in the palm, and each finger is bent to put its tip on
                 # the exported one with the sculpt's own bone lengths (see solve_finger)
                 for i in KNUCKLES:
-                    q[i] = w0 + palm @ ((rp[i] - wr) * g)
+                    q[i] = w0 + palm @ ((rp[i] - wr) * g) + Vector((0.0, 0.0, raised.get(i, 0.0)))
                 for base, joints in CHAINS:
                     q[joints[0]:joints[-1] + 1] = finger_chain(p, q, rp, g, base, joints,
                                                                surface if base else None,

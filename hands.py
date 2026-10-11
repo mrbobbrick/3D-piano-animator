@@ -212,6 +212,17 @@ LIMIT_SMOOTH_HAND = 3       # grid steps each side the limited hand is averaged 
 LIMIT_SMOOTH_HAND_ON = 3    # ...and while its fingers are on keys
 LIMIT_SMOOTH_TIPS = 3       # ...and the fingertips
 PIN_EASE_T = 0.12            # s a fingertip eases between pinned on its key and its smoothed path
+# The knuckles of fingers 2-4 are drawn up to ARCH_RAISE_IN higher than the solver places them
+# (a deeper arch), as far as each finger still reaches its tip with ARCH_REACH of its length
+# (_arch_at): at the solver's height those fingers were folded tight, the first phalanx rising
+# from the knuckle and the rest hooking down - a claw, "spiders". The thumb and the little
+# finger already play nearly straight, so the hand itself can't rise. Each finger's room is
+# taken as its least over +-ARCH_MIN_STEPS grid steps, then averaged over as many, so a
+# knuckle settles lower ahead of a stretch instead of dropping into it.
+ARCH_FINGERS = (2, 3, 4)
+ARCH_RAISE_IN = 0.6
+ARCH_REACH = 0.95
+ARCH_MIN_STEPS = 8
 SHAPE_FALLOFF = 0.6         # idle fingers follow a busy neighbour by this much per finger
 
 
@@ -283,6 +294,7 @@ def pair_hands(animators):
         a._idle_cache, a._clear_cache, a._path_cache = {}, {}, {}
         a._limit_cache, a._tip_limit_cache = {}, {}
         a._smooth_hand_cache, a._smooth_tip_cache = {}, {}
+        a._raise_cache, a._raise_min_cache = {}, {}
 
 
 def _ease_out(x):
@@ -1292,12 +1304,15 @@ class HandAnimator:
         self.base_local = {f: (geo.base(f)[0] * S, geo.base(f)[1] * S, geo.base(f)[2] * S + self.z_off)
                            for f in range(1, 6)}
         self.length = {f: sum(geo.bones[f]) * S for f in range(1, 6)}
+        self.mcp_local = {f: (geo.mcp[f][0] * S, geo.mcp[f][1] * S, geo.mcp[f][2] * S + self.z_off)
+                          for f in range(2, 6)}
         self.splay = {f: tuple(math.radians(a) for a in SPLAY_LIMIT_DEG[f]) for f in range(1, 6)}
         self.travel = KEY_TRAVEL_IN * self.ppi
         self._cache = {}
         self._idle_cache, self._clear_cache, self._path_cache = {}, {}, {}
         self._limit_cache, self._tip_limit_cache = {}, {}
         self._smooth_hand_cache, self._smooth_tip_cache = {}, {}
+        self._raise_cache, self._raise_min_cache = {}, {}
         # mirror axis (centre of D4) and the shoulder, ~10 semitones from D4
         # toward the hand's own side (in the mirrored frame for the left hand)
         self.axis_x = kb.key_rects[62].centerx if 62 in kb.key_rects else kb.rect.centerx
@@ -1943,6 +1958,58 @@ class HandAnimator:
             out[f] = (rest[f][0] + _clamp(dx, -cap_x, cap_x), rest[f][1] + _clamp(dy, -cap_y, cap_y))
         return out
 
+    def arch_at(self, t):
+        """{finger: how much higher than placed its knuckle is drawn at t (pixels)} for ARCH_FINGERS."""
+        if ARCH_RAISE_IN <= 0:
+            return {f: 0.0 for f in ARCH_FINGERS}
+        g = LIMIT_GRID_T
+        k = math.floor(t / g)
+        u = t / g - k
+        a, b = self._arch_smooth(k), self._arch_smooth(k + 1)
+        return {f: a[f] + (b[f] - a[f]) * u for f in ARCH_FINGERS}
+
+    def _arch_smooth(self, k):
+        n = ARCH_MIN_STEPS
+        cache = self._raise_cache
+        if k not in cache:
+            if len(cache) > 20000:
+                cache.clear()
+            ws = sum(n + 1 - abs(d) for d in range(-n, n + 1))
+            low = [(n + 1 - abs(d), self._arch_min(k + d)) for d in range(-n, n + 1)]
+            cache[k] = {f: sum(w * r[f] for w, r in low) / ws for f in ARCH_FINGERS}
+        return cache[k]
+
+    def _arch_min(self, k):
+        n = ARCH_MIN_STEPS
+        cache = self._raise_min_cache
+        if k not in cache:
+            if len(cache) > 20000:
+                cache.clear()
+            rooms = [self._arch_room(k + d) for d in range(-n, n + 1)]
+            cache[k] = {f: min(r[f] for r in rooms) for f in ARCH_FINGERS}
+        return cache[k]
+
+    def _arch_room(self, k):
+        """
+        {finger: how far its knuckle can rise at grid step k (up to ARCH_RAISE_IN)
+        with the finger still reaching its fingertip with ARCH_REACH of its length}.
+        """
+        t = k * LIMIT_GRID_T
+        wx, wy, psi = self._limited_at(t)
+        tips = self._limited_tips(t)
+        out = {}
+        for f in ARCH_FINGERS:
+            tip = self._limit_tip(f, tips[f], wx, wy, psi)
+            if self.black_rise_in > 0:
+                tip = self._over_black(tip)
+            mx, my, mz = self.mcp_local[f]
+            x, y = self._rot(mx, my, psi)
+            flat = math.hypot(wx + x - tip[0], wy + y - tip[1])
+            L = ARCH_REACH * sum(self.geo.bones[f]) * self.S
+            room = tip[2] + math.sqrt(L * L - flat * flat) - mz if flat < L else 0.0
+            out[f] = min(ARCH_RAISE_IN * self.ppi, max(0.0, room))
+        return out
+
     def _limit_tip(self, f, tip, wx, wy, psi):
         """Clamp a fingertip target to the finger's splay and reach range."""
         # a finger already down on its key may stretch a touch further
@@ -1973,6 +2040,9 @@ class HandAnimator:
         lift, roll, gw = self._gesture_at(t)
         sin_r, cos_r, xc = math.sin(roll), math.cos(roll), self.geo.mcp[3][0] * S
         hb = [0.0]                              # the hand's vertical offset (set below)
+        # rounder: the middle knuckles drawn higher than placed, as far as their fingers reach
+        # (not while the wrist itself plays, where the fingers are held rigid in the hand)
+        arch = {f: r * (1.0 - gw) for f, r in self.arch_at(t).items()}
 
         def droll(lx):
             return -sin_r * (lx - xc)
@@ -2032,6 +2102,8 @@ class HandAnimator:
         chains = {}
         for f in range(2, 6):
             mcp = world(geo.mcp[f])
+            if f in arch:
+                mcp = (mcp[0], mcp[1], mcp[2] + arch[f])
             bones.append((bases[f], mcp, "metacarpal"))
             pts = solve_chain(mcp, tips[f], [L * S for L in geo.bones[f]], up,
                               FINGER_COUPLING, FINGER_BEND_MAX)

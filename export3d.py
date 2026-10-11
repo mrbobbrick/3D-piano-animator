@@ -120,6 +120,7 @@ class Export:
         hands share the music instead (export3d.shared), labelled the same way.
         """
         self.path = path
+        self.lead = LEAD_IN_T                 # seconds of video before the first note
         self.song = load_song(path)
         if pairs > 1:
             self.kb, self.hands = keyboard(), {}
@@ -145,7 +146,7 @@ class Export:
         the video it's part of begins and ends (for its title and end text).
         """
         kb, m, song = self.kb, self.m, self.song
-        t0 = self.first - LEAD_IN_T if start is None else start
+        t0 = self.default_start() if start is None else start
         t1 = self.last + TAIL_T if end is None else end
         n = int(round((t1 - t0) * fps)) + 1
         frames = {h: [] for h in self.hands}
@@ -215,7 +216,7 @@ class Export:
         return out
 
     def default_start(self):
-        return self.first - LEAD_IN_T
+        return self.first - self.lead
 
     def default_end(self):
         return self.last + TAIL_T
@@ -231,8 +232,11 @@ class Export:
         return data
 
 
-def export(path, out, fps=60, start=None, end=None, clones=(), pairs=1):
-    return Export(path, clones, pairs).save(out, fps, start, end, verbose=True)
+def export(path, out, fps=60, start=None, end=None, clones=(), pairs=1, lead=None):
+    e = Export(path, clones, pairs)
+    if lead is not None:
+        e.lead = lead
+    return e.save(out, fps, start, end, verbose=True)
 
 
 def main():
@@ -244,10 +248,11 @@ def main():
     ap.add_argument("--end", type=float, help="last frame's song time (default: 2 s after the last release)")
     ap.add_argument("--clones", default="", help="extra pairs of hands, as semitone shifts: e.g. 12,-12")
     ap.add_argument("--pairs", type=int, default=1, help="pairs of hands sharing the music (side by side)")
+    ap.add_argument("--lead", type=float, help=f"seconds before the first note (default {LEAD_IN_T:g})")
     args = ap.parse_args()
     pygame.init()
     clones = [int(c) for c in args.clones.split(",") if c.strip()]
-    export(args.midi, args.out, args.fps, args.start, args.end, clones, args.pairs)
+    export(args.midi, args.out, args.fps, args.start, args.end, clones, args.pairs, args.lead)
 
 
 if __name__ == "__main__":

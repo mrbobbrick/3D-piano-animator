@@ -565,6 +565,15 @@ Detailed design notes, kept up to date as features were added. Start with `CLAUD
     sharing - 0, 0, 0; closest the two pianists' hands come: 26 mm. Ember Fountain with 2 / 3 pairs: 0 never
     pressed, 0 off; the pianists' hands within 15 mm in 4 of 4720 frames.
   - Shared music is always heard (`video_style.extra_heard`); each pair's notes keep the `extra_hue` turn.
+- **Hands appear one at a time** (2026-10-11; style `hands_enter`, `hands_enter_gap`). `video_style.entrances`:
+  each hand slides in over `ENTER_T` (0.8 s), done `ENTER_READY_T` (0.3 s) before its first strike, in the order
+  the hands first play; the next starts at least `hands_enter_gap` after the one before has arrived, so hands
+  that start together come in one by one ahead of the music, and a pianist who joins later comes in just before
+  their part. `enter_lead` lengthens the video's opening (export `lead`, normally `LEAD_IN_T` 3 s) to fit every
+  entrance. In Blender (`hands_rig.entrance_at`): before its entrance a hand's bones are scaled to `HIDDEN_SCALE`
+  (collapsed - one mesh holds both hands of a pair, so object visibility can't hide one); during it all its
+  points are offset by `ENTER_FROM` (0.45 m toward the player, 0.12 m down) times a smootherstep that eases to 0.
+  The keys, notes, lights and camera use the export's own points and are untouched.
 - **Top travel speed** (2026-09-28; pianist `max_speed`, default 3.0 m/s, 0.5–5): no part of a hand - wrist or
   fingertip - travels faster, and what is heard is what the hands then play.
   - Model (`fingering.travel_time`): moves ease in and out like the animation's smootherstep, whose peak is 1.875× the

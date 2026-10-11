@@ -218,13 +218,14 @@ class Previews:
                 st["elapsed"] = round(time.time() - st["started"], 1)
             return st
 
-    def _export(self, song, clones, pairs=1):
+    def _export(self, song, clones, pairs=1, lead=3.0):
         import export3d
-        key = (song, os.path.getmtime(song), tuple(clones), pairs)
+        key = (song, os.path.getmtime(song), tuple(clones), pairs, lead)
         if key not in self.exports:
             if len(self.exports) > 4:
                 self.exports.clear()
             exp = self.exports[key] = export3d.Export(song, clones, pairs)
+            exp.lead = lead
             # which notes the hands really press: slow, so worked out in the background for previews
             # (a full render gets it from its own frames)
             threading.Thread(target=exp.pressed_map, daemon=True).start()
@@ -246,7 +247,8 @@ class Previews:
                 t = float(req["t"])
                 anim = os.path.join(WORK, "preview.json")
                 style = video_style.resolve(req["style"])
-                exp = self._export(req["song"], video_style.clone_shifts(style), video_style.shared_pairs(style))
+                exp = self._export(req["song"], video_style.clone_shifts(style), video_style.shared_pairs(style),
+                                   video_style.enter_lead(style))
                 exp.save(anim, 30, t - 0.6, t, video_start=exp.default_start(), video_end=exp.default_end(),
                          pressed=getattr(exp, "_pressed", None))
                 style_file = os.path.join(WORK, "preview_style.json")

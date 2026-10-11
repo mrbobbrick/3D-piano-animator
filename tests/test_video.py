@@ -139,3 +139,25 @@ def test_shared_export_seats_each_pianist_at_their_part(tmp_path):
     assert e.hands["L2"].neighbour is e.hands["R"] and e.hands["R"].neighbour is e.hands["L2"]
     played = sorted(n.pitch for a in e.hands.values() for _, _, n in a.performance)
     assert played == sorted(n.pitch for n in pm.instruments[0].notes)
+
+
+def test_hands_enter_one_at_a_time():
+    assert V.entrances({"R": 3.0, "L": 3.0}, V.resolve()) == {}           # off by default
+    st = V.resolve({"hands_enter": True, "hands_enter_gap": 0.5})
+    # both hands start together: they come in one after the other, the second ready just before the music
+    e = V.entrances({"R": 3.0, "L": 3.0}, st)
+    (a1, b1), (a2, b2) = sorted(e.values())
+    assert b2 == 3.0 - V.ENTER_READY_T and a2 >= b1 + 0.5 - 1e-9
+    assert all(abs(b - a - V.ENTER_T) < 1e-9 for a, b in e.values())
+    # a pianist who joins later comes in just before their first note, in turn
+    e = V.entrances({"R": 3.0, "L": 3.2, "R2": 20.0, "L2": 20.0}, st)
+    order = sorted(e, key=lambda h: e[h][0])
+    assert order[:2] == ["R", "L"] and set(order[2:]) == {"R2", "L2"}
+    assert e["L"][1] <= 3.2 - V.ENTER_READY_T and 19.0 < max(e["R2"][1], e["L2"][1]) <= 20.0
+
+
+def test_opening_is_long_enough_for_every_hand_to_come_in():
+    assert V.enter_lead(V.resolve()) == 3.0
+    st = V.resolve({"hands_enter": True, "extra_hands": 1, "extra_mode": "share"})
+    e = V.entrances({h: 10.0 for h in ("R", "L", "R2", "L2")}, st)
+    assert 10.0 - V.enter_lead(st) < min(a for a, _ in e.values())

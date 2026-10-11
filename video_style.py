@@ -60,6 +60,9 @@ SETTINGS = [
          default=0.0008, fmt=_mm),
     dict(id="only_pressed", group="Notes", label="Only notes the hands actually press", kind="toggle",
          default=True, desc="Hide a note whose finger doesn't get its key down (the sound still plays)"),
+    dict(id="played_lengths", group="Notes", label="Notes last as long as the key is held", kind="toggle",
+         default=True, desc="Each note runs from the finger's strike to its release, not the MIDI file's times "
+                            "(a hand lets go early to reach the next notes; the pedal still holds the sound)"),
     dict(id="finger_numbers", group="Notes", label="Finger numbers", kind="toggle", default=False),
     dict(id="note_outline", group="Notes", label="Outline only (neon tubes)", kind="toggle", default=False),
     dict(id="outline_width", group="Notes", label="Outline thickness", kind="slider", min=0.0003, max=0.003,

@@ -597,6 +597,13 @@ Detailed design notes, kept up to date as features were added. Start with `CLAUD
   previews use `Export.pressed_map()` (a pose just after each strike, or halfway through: ~40 ms a note, ~50 s
   for 1249 notes), worked out in the background by the server and passed as each note's "pressed". New Ember
   Fountain: 15 (map) / 14 (render) of 1249 notes not pressed. The audio keeps every note.
+- Played lengths (`played_lengths`, on by default, 2026-10-11): a note is drawn (and lights the runway, carries
+  its finger number) from its finger's strike to its release (`press` / `release`, the hands' performance), not
+  the MIDI file's `start` / `end` (`Scene.span`). The hands let go early to reach the next notes or cross
+  (hands.py), and drawn at the file's length a note stayed on screen after its key came up, which read as the
+  hands not holding the notes. Ember Fountain: 259 of 1249 notes released >0.1 s before their written end, 31
+  by >0.5 s (482 s of drawn note time against 389 s held); 150 of 150 sampled notes keep their key >=40% down
+  from strike to release. The pedal still sustains the sound.
 - The studio page: settings | preview | render and videos side by side from 1450 px wide (the last column drops
   under the preview below that, everything stacks below 960 px). Settings search and "changed only", undo/redo, a
   change count on each tab, a ↺ on each changed setting, typed slider values (in the shown units, clamped to the
@@ -641,8 +648,13 @@ Detailed design notes, kept up to date as features were added. Start with `CLAUD
   held above the keys keeps the curve it would have resting on the key under it (`surface`) and is lifted at the
   knuckle, its tip on the line from the knuckle to the exported one: the export raises a tip toward the knuckle,
   and bending the finger to follow curled it into a claw (pressing fingers already sit at ~84% of full reach).
-  The export's thumb is ~25% longer than the sculpt's and was out of reach 61% of the time: it is lengthened by
-  up to `THUMB_MAX` = 1.15 (thickened by the square root). Out of reach, a finger straightens and stretches
+  The export's thumb is longer than the sculpt's and was out of reach 61% of the time. It used to be lengthened by
+  up to 1.15 (and thickened), which viewers found freakishly long; now it keeps the sculpt's size and the whole
+  hand (wrist, palm, knuckles, forearm) moves toward the thumb's tip by what it lacks to reach it at
+  `THUMB_REACH` (98%) of its length, at most `THUMB_SHIFT_MAX` (2.5 cm) (`thumb_shift`; the fingers, solved from
+  the knuckles, bend a little more). Simulated on Ember Fountain with a stand-in thumb calibrated to the 61%
+  (2026-10-11): the hand moves in 68% (right) / 87% (left) of frames, median 4-5 mm, at most 9 mm; the thumb
+  always reaches; fingers out of reach 0.01%. The build prints the real figures. Out of reach, a finger straightens and stretches
   (demo song: 1-4% of finger positions, at most 1.06; the build prints it). Contact after the tip-only
   `TIP_LIFTS["sculpted"]` (fingers 2.7-3.0 mm, the thumb on its side 7.9 mm): -0.8..+0.3 mm, median -0.1.
 - The studio server is stdlib only (`ThreadingHTTPServer` on 127.0.0.1). Previews: the song is solved once per

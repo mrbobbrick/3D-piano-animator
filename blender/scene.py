@@ -469,6 +469,16 @@ class Scene:
         shown = getattr(self, "shown", None)
         return shown is None or shown[ni]
 
+    def span(self, n):
+        """
+        (start, end) of a note as drawn: with played_lengths, from its
+        finger's strike to its release (the hands' performance), so a note
+        lasts only as long as its key is held; else the MIDI file's times.
+        """
+        if self.st["played_lengths"]:
+            return n["press"], max(n["release"], n["press"] + 0.01)
+        return n["start"], n["end"]
+
     def lane(self, k):
         """(x0, x1) of a key's note bar."""
         w = k["x1"] - k["x0"]
@@ -680,8 +690,9 @@ class Scene:
             if k is None or not self.is_shown(ni):
                 continue
             x0, x1 = self.lane(k)
-            z0 = self.run_pos(n["start"])
-            z1 = max(z0 + 0.003, self.run_pos(n["end"]) - st["note_gap"])
+            t_start, t_end = self.span(n)
+            z0 = self.run_pos(t_start)
+            z1 = max(z0 + 0.003, self.run_pos(t_end) - st["note_gap"])
             boxes.append(self.note_box(x0, x1, z0, z1, k["black"]))
             cols.append(srgb(self.colors[ni]))
             lo.append(z0)
@@ -782,9 +793,10 @@ class Scene:
                 continue
             x0, x1 = self.lane(k)
             s = min(0.75 * (x1 - x0), 0.012)
-            if (n["end"] - n["start"]) * v < 1.4 * s:
+            t_start, t_end = self.span(n)
+            if (t_end - t_start) * v < 1.4 * s:
                 continue
-            pts.append(self.on_face((x0 + x1) / 2, self.run_pos(n["start"]) + 0.15 * s, k["black"]))
+            pts.append(self.on_face((x0 + x1) / 2, self.run_pos(t_start) + 0.15 * s, k["black"]))
             dig.append(float(n["finger"] - 1))
             size.append(s)
         me = bpy.data.meshes.new("fingers")
@@ -1066,12 +1078,13 @@ class Scene:
             if not self.is_shown(ni):
                 continue
             c = srgb(self.colors[ni])
-            i0 = max(0, int((n["start"] - NEAR_T - self.t0) * self.fps))
-            i1 = min(self.n - 1, int((n["end"] - self.t0) * self.fps))
+            t_start, t_end = self.span(n)
+            i0 = max(0, int((t_start - NEAR_T - self.t0) * self.fps))
+            i1 = min(self.n - 1, int((t_end - self.t0) * self.fps))
             for i in range(i0, i1 + 1):
                 t = self.t0 + i / self.fps
                 # how much of this note is in [t, t + NEAR_T], nearer counting more
-                a, b = max(n["start"], t), min(n["end"], t + NEAR_T)
+                a, b = max(t_start, t), min(t_end, t + NEAR_T)
                 if b <= a:
                     continue
                 w = (b - a) / NEAR_T * (1.0 - (a - t) / NEAR_T * 0.6)

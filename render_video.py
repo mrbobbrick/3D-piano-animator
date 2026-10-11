@@ -108,9 +108,10 @@ def stage(*words):
     print("@" + " ".join(str(w) for w in words), flush=True)
 
 
-def export(midi, out, fps, start=None, end=None, clones=(), pairs=1, lead=None):
+def export(midi, out, fps, start=None, end=None, clones=(), pairs=1, lead=None, apart=False):
     run([sys.executable, os.path.join(HERE, "export3d.py"), midi, out, "--fps", str(fps),
          "--clones", ",".join(str(c) for c in clones), "--pairs", str(pairs)]
+        + (["--apart"] if apart else [])
         + (["--lead", str(lead)] if lead is not None else [])
         + (["--start", str(start)] if start is not None else [])
         + (["--end", str(end)] if end is not None else []), stdout=subprocess.DEVNULL)
@@ -166,7 +167,7 @@ def main():
     stage("stage", "export")
     anim = os.path.join(work, "anim.json")
     data = export(args.midi, anim, args.fps, args.start, args.end, video_style.clone_shifts(style),
-                  video_style.shared_pairs(style), video_style.enter_lead(style))
+                  video_style.shared_pairs(style), video_style.enter_lead(style), style["hands_apart"])
     stage("frames", data["frames"], frames)
 
     # 2. audio of what the hands play

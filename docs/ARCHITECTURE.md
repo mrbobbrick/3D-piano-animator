@@ -565,6 +565,11 @@ Detailed design notes, kept up to date as features were added. Start with `CLAUD
     sharing - 0, 0, 0; closest the two pianists' hands come: 26 mm. Ember Fountain with 2 / 3 pairs: 0 never
     pressed, 0 off; the pianists' hands within 15 mm in 4 of 4720 frames.
   - Shared music is always heard (`video_style.extra_heard`); each pair's notes keep the `extra_hue` turn.
+  - Keeping apart is optional (2026-10-11, style `hands_apart`, off by default: the user wanted the pianists'
+    hands free to collide). Off, `split_among(apart=False)` drops the `SHARE_GAP` rule and the pianists aren't
+    seated side by side (no `neighbour` clearance). Four-part test: still 0 notes never pressed; the facing
+    hands within 15 mm in 456 of 1302 frames (closest 1 mm) against 0 (26 mm) when kept apart. Rush E with
+    4 pairs: 60% of notes played either way.
 - **Hands appear one at a time** (2026-10-11; style `hands_enter`, `hands_enter_gap`). `video_style.entrances`:
   each hand slides in over `ENTER_T` (0.8 s), done `ENTER_READY_T` (0.3 s) before its first strike, in the order
   the hands first play; the next starts at least `hands_enter_gap` after the one before has arrived, so hands

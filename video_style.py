@@ -191,6 +191,9 @@ SETTINGS = [
                   ("share", "Share the music side by side (play what two hands can't)")],
          desc="Share: the music is divided among all the pairs, each pianist taking a register, so passages "
               "too wide or too fast for two hands are played as written"),
+    dict(id="hands_apart", group="Hands", label="Pianists keep out of each other's way", kind="toggle",
+         default=False, desc="When sharing the music. Off: neighbouring pianists' hands may reach into each "
+                             "other's keys and collide"),
     dict(id="extra_spacing", group="Hands", label="Octaves between the pairs", kind="slider", min=1, max=3,
          default=1, fmt=_n, step=1),
     dict(id="extra_heard", group="Hands", label="Hear the extra hands", kind="toggle", default=True),

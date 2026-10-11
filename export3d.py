@@ -66,13 +66,13 @@ def build(song, kb=None, seat=0):
     return kb, hands
 
 
-def shared(song, pairs):
+def shared(song, pairs, apart=True):
     """
     The song shared among `pairs` pairs of hands side by side (hand_split.split_among):
     [(sub-song with its notes labelled L / R, seat in semitones)], lowest pair first.
     """
     from hand_split import split_among
-    who = split_among(song.notes, 2 * pairs)
+    who = split_among(song.notes, 2 * pairs, apart=apart)
     out = []
     for k in range(pairs):
         notes = [replace(n, hand=LEFT if who[id(n)] == 2 * k else RIGHT, finger=None)
@@ -113,11 +113,12 @@ def keyboard_data(kb, m):
 class Export:
     """A song solved once (fingering, hands), sampled as often as needed (the 3D studio's previews)."""
 
-    def __init__(self, path, clones=(), pairs=1):
+    def __init__(self, path, clones=(), pairs=1, apart=False):
         """
         clones: semitone shifts of extra pairs of hands playing the same music
         (video_style.clone_shifts), "R2"/"L2", ... . pairs: how many pairs of
-        hands share the music instead (export3d.shared), labelled the same way.
+        hands share the music instead (export3d.shared), labelled the same way;
+        apart: the pianists keep out of each other's way (else their hands may collide).
         """
         self.path = path
         self.lead = LEAD_IN_T                 # seconds of video before the first note
@@ -125,11 +126,12 @@ class Export:
         if pairs > 1:
             self.kb, self.hands = keyboard(), {}
             seated = []
-            for k, (s, seat) in enumerate(shared(self.song, pairs), start=1):
+            for k, (s, seat) in enumerate(shared(self.song, pairs, apart), start=1):
                 _, hs = build(s, self.kb, seat)
                 seated.append(hs)
                 self.hands.update({f"{h}{k if k > 1 else ''}": a for h, a in hs.items()})
-            seat_side_by_side(seated)
+            if apart:
+                seat_side_by_side(seated)
         else:
             self.kb, self.hands = build(self.song)
         for k, shift in enumerate(clones, start=2):
@@ -232,8 +234,8 @@ class Export:
         return data
 
 
-def export(path, out, fps=60, start=None, end=None, clones=(), pairs=1, lead=None):
-    e = Export(path, clones, pairs)
+def export(path, out, fps=60, start=None, end=None, clones=(), pairs=1, lead=None, apart=False):
+    e = Export(path, clones, pairs, apart)
     if lead is not None:
         e.lead = lead
     return e.save(out, fps, start, end, verbose=True)
@@ -248,11 +250,12 @@ def main():
     ap.add_argument("--end", type=float, help="last frame's song time (default: 2 s after the last release)")
     ap.add_argument("--clones", default="", help="extra pairs of hands, as semitone shifts: e.g. 12,-12")
     ap.add_argument("--pairs", type=int, default=1, help="pairs of hands sharing the music (side by side)")
+    ap.add_argument("--apart", action="store_true", help="pianists sharing the music keep out of each other's way")
     ap.add_argument("--lead", type=float, help=f"seconds before the first note (default {LEAD_IN_T:g})")
     args = ap.parse_args()
     pygame.init()
     clones = [int(c) for c in args.clones.split(",") if c.strip()]
-    export(args.midi, args.out, args.fps, args.start, args.end, clones, args.pairs, args.lead)
+    export(args.midi, args.out, args.fps, args.start, args.end, clones, args.pairs, args.lead, args.apart)
 
 
 if __name__ == "__main__":

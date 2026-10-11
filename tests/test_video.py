@@ -136,6 +136,9 @@ def test_shared_export_seats_each_pianist_at_their_part(tmp_path):
     e = export3d.Export(path, pairs=2)
     assert set(e.hands) == {"L", "R", "L2", "R2"}
     assert e.hands["L2"].seat > e.hands["R"].seat
+    assert e.hands["R"].neighbour is None                   # by default the pianists may collide
+    assert not V.resolve()["hands_apart"]
+    e = export3d.Export(path, pairs=2, apart=True)          # ... or keep out of each other's way
     assert e.hands["L2"].neighbour is e.hands["R"] and e.hands["R"].neighbour is e.hands["L2"]
     played = sorted(n.pitch for a in e.hands.values() for _, _, n in a.performance)
     assert played == sorted(n.pitch for n in pm.instruments[0].notes)

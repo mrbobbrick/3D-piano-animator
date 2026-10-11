@@ -377,7 +377,7 @@ def _occupied(hand, t):
     return _extent(min(ps), max(ps)) if ps else None
 
 
-def split_among(notes, n, pianist=None):
+def split_among(notes, n, pianist=None, apart=True):
     """
     {id(note): hand index} for n hands, 0 the lowest: as split_hands, but each
     chord is cut into n runs by pitch (low notes to low hands), so pairs of
@@ -386,6 +386,8 @@ def split_among(notes, n, pianist=None):
     never has to leap faster than the pianist's top speed if another can take
     the note), plus a mild cost for straying out of its share of the range and
     for reaching past its neighbours, so the hands stay in order and apart.
+    apart=False drops the rule that keeps two pianists' facing hands apart: they
+    may reach into each other's keys (and collide).
     """
     if pianist is None:
         try:
@@ -423,7 +425,7 @@ def split_among(notes, n, pianist=None):
                     c += SHARE_ORDER * (part[-1].pitch - hs[i + 1].center)
                 # hands of different pianists keep apart: an even hand (a left hand) has the
                 # previous pianist's right hand below it, an odd one the next pianist's left above
-                if (i % 2 == 0 and i > 0) or (i % 2 == 1 and i + 1 < n):
+                if apart and ((i % 2 == 0 and i > 0) or (i % 2 == 1 and i + 1 < n)):
                     own = _extent(part[0].pitch, part[-1].pitch)
                     if i % 2 == 0 and i > 0:
                         occ = _occupied(hs[i - 1], t)

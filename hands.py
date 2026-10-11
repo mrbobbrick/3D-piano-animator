@@ -223,6 +223,15 @@ ARCH_FINGERS = (2, 3, 4)
 ARCH_RAISE_IN = 0.6
 ARCH_REACH = 0.95
 ARCH_MIN_STEPS = 8
+# Human touch (pianist "humanize", 0..1; the sizes below are at 1): small, slow, deterministic
+# variations - nothing that jitters frame to frame
+LIFT_BY_VELOCITY = 0.8       # a note's lift before its strike: x(1 +- 0.4) from soft to loud...
+LIFT_VARIETY = 0.3           # ...and x(1 +- 0.15) from note to note
+FINGER_WANDER_IN = (0.06, 0.12)  # in, idle fingertips wander this much across / up and down
+SYMPATHY_IN = 0.25           # in, an idle finger dips this much with a neighbour pressing its key
+SYMPATHY = {(2, 3): 0.6, (3, 4): 1.0, (4, 5): 1.0}   # how tightly neighbours are linked (ring finger most)
+BREATH_IN = (0.16, 0.12)     # in, the whole hand sways across / up and down...
+BREATH_DEG = 1.5             # ...and turns, slowly
 SHAPE_FALLOFF = 0.6         # idle fingers follow a busy neighbour by this much per finger
 
 
@@ -251,6 +260,21 @@ def _lerp3(a, b, s): return tuple(_lerp(x, y, s) for x, y in zip(a, b))
 def _smooth(x):
     x = min(1.0, max(0.0, x))
     return x * x * x * (x * (x * 6 - 15) + 10)          # smootherstep
+
+
+def _drift(seed, t):
+    """Slow smooth wander in about -1..1: three sines (0.1-0.5 Hz) with phases from seed."""
+    out = 0.0
+    for k, (f, a) in enumerate(((0.11, 0.5), (0.23, 0.33), (0.47, 0.17))):
+        ph = math.sin(seed * 12.9898 + k * 78.233) * 43758.5453
+        out += a * math.sin(2 * math.pi * (f * (1.0 + 0.07 * (seed % 5)) * t + ph - math.floor(ph)))
+    return out
+
+
+def _note_variety(note):
+    """A fixed -1..1 for a note, from its pitch and time (the same on every run)."""
+    v = math.sin(note.pitch * 12.9898 + note.start * 78.233) * 43758.5453
+    return 2.0 * (v - math.floor(v)) - 1.0
 
 
 def loudness(velocity):
@@ -501,8 +525,8 @@ class HandAnimator:
         self.geo = HandGeometry(self.pianist.anatomy)
         self.skin = self.pianist.skin_settings()
         self.color = tuple(self.skin["colors"]["skeleton"]["bone"])
-        self._set_behavior(self.pianist)
         self.hand = hand
+        self._set_behavior(self.pianist)
         self.song = song
         # The left hand is a right hand on the mirrored keyboard: everything
         # is solved in mirrored coordinates and flipped back when drawn.
@@ -879,8 +903,30 @@ class HandAnimator:
         for f in range(1, 6):
             if busy[f] < 1.0:
                 tips[f], _ = self._tip_target(f, t, to_world_xy(shaped[f][0], shaped[f][1] - rb[f]), hand)
+                if self.human > 0:
+                    tips[f] = self._lively(f, t, tips[f], 1.0 - busy[f], psi)
             tips[f] = self._limit_tip(f, tips[f], wx, wy, psi)
         return tips
+
+    def _lively(self, f, t, tip, idle, psi):
+        """
+        An idle fingertip (idle 0..1) with the human touch: wandering slowly across
+        and up and down, and dipping with a neighbour that is pressing its key
+        (the ring finger most, its tendons being linked to both neighbours').
+        """
+        h, ppi = self.human * idle, self.ppi
+        dx, dy = self._rot(FINGER_WANDER_IN[0] * ppi * _drift(self.seed * 10 + f, t),
+                           0.5 * FINGER_WANDER_IN[0] * ppi * _drift(self.seed * 10 + f + 5, t), psi)
+        z = tip[2] + h * FINGER_WANDER_IN[1] * ppi * _drift(self.seed * 10 + f + 20, t)
+        dip = 0.0
+        for g in (f - 1, f + 1):
+            link = SYMPATHY.get((min(f, g), max(f, g)), 0.0)
+            if link:
+                dip = max(dip, link * _smooth(self._press_amount(g, t)))
+        floor = 0.4 * HOVER[f] * self.S
+        if dip > 0 and z > floor:
+            z = max(floor, z - h * SYMPATHY_IN * ppi * dip)
+        return (tip[0] + h * dx, tip[1] + h * dy, z)
 
     def _limited_tips(self, t):
         """
@@ -1092,6 +1138,8 @@ class HandAnimator:
         self.area_near = p.b("key_area_near")
         self.area_far = max(self.area_near + 0.05, p.b("key_area_far"))
         self.roll_dt = p.b("roll_speed")
+        self.human = p.b("humanize")
+        self.seed = 1.0 if self.hand == RIGHT else 2.0
         self.cross_arc_in = 0.5 + 3.0 * p.b("cross_height")
         self.curl_k = curl_factor(p)
         c = p.b("finger_curve")
@@ -1894,7 +1942,11 @@ class HandAnimator:
         if nxt is None:
             return idle, busy
         # Head for the next key as soon as this finger is free (but not more
-        # than PREP_MAX_T ahead), arriving raised and ready to strike.
+        # than PREP_MAX_T ahead), arriving raised and ready to strike: loud
+        # notes from higher, soft ones close to the keys, each a bit differently
+        if self.human > 0:
+            prep *= 1.0 + self.human * (LIFT_BY_VELOCITY * (loudness(nxt.velocity) - 0.5)
+                                        + 0.5 * LIFT_VARIETY * _note_variety(nxt))
         prep_start, strike_start, strike = self._prep_window(f, i)
         if t < prep_start:
             return idle, busy
@@ -2051,7 +2103,7 @@ class HandAnimator:
             lx = p[0] * S
             # rolled about the forearm axis: the sides dip / rise and draw in a little
             x, y = rot(xc + (lx - xc) * cos_r, p[1] * S, psi)
-            return (wx + x, wy + y, p[2] * S + self.z_off + gw * (hb[0] + droll(lx)))
+            return (wx + x, wy + y, p[2] * S + self.z_off + bob + gw * (hb[0] + droll(lx)))
 
         # fingertips, held to the top speed across the keys (_limited_tips)
         tips = {f: self._limit_tip(f, p, wx, wy, psi) for f, p in self._limited_tips(t).items()}
@@ -2080,6 +2132,16 @@ class HandAnimator:
 
         if self.black_rise_in > 0:
             tips = {f: self._over_black(p) for f, p in tips.items()}
+
+        # The hand is never quite still: a slow sway and turn of a millimetre or two, drawn
+        # only (after the fingertips are settled, so none held on a key is moved off it)
+        bob = 0.0
+        if self.human > 0:
+            h, ppi = self.human, self.ppi
+            wx += h * BREATH_IN[0] * ppi * _drift(self.seed + 40, t)
+            wy += h * 0.5 * BREATH_IN[0] * ppi * _drift(self.seed + 41, t)
+            psi += h * math.radians(BREATH_DEG) * _drift(self.seed + 42, t)
+            bob = h * BREATH_IN[1] * ppi * _drift(self.seed + 43, t)
 
         bones, joints = [], []
         up = (0.0, 0.0, 1.0)

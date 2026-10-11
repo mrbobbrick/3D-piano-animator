@@ -134,6 +134,11 @@ BEHAVIORS = [
          min=0.0, max=30.0, default=14.0, fmt=_deg, lo="Quiet wrist", hi="Turns a lot",
          desc="How far the hand turns toward the little finger while the thumb passes under "
               "(and back the other way when a finger crosses over)."),
+    dict(id="humanize", group="Motion", label="Human touch", kind="slider",
+         min=0.0, max=1.0, default=0.5, fmt=_pct, lo="Mechanical", hi="Lively",
+         desc="Small natural variations: loud notes lifted higher before they're struck and soft "
+              "ones played close to the keys, each a little differently; idle fingers and the hand "
+              "drifting slowly; neighbouring fingers dipping with one that presses."),
     dict(id="smoothness", group="Motion", label="Hand motion smoothness", kind="slider",
          min=0.02, max=0.15, default=0.07, fmt=_ms, lo="Quick, direct", hi="Smooth, flowing",
          desc="How much the hand's movements are smoothed: shifts accelerate and settle over "

@@ -530,6 +530,20 @@ Detailed design notes, kept up to date as features were added. Start with `CLAUD
   slopes up 16° from the wrist: the wrist can't rise with it, as it carries the thumb's root. The export passes
   the raise per frame ("arch"); `hands_rig` takes the palm's frame from the unraised knuckles and adds the raise
   to the sculpt's own knuckles 2-4, so the arch doesn't tilt the whole palm.
+- **Human touch** (2026-10-11; pianist `humanize`, default 50%, after "put some randomness in, add some humanity
+  to the hand movement"). Only slow, smooth, deterministic variations (the same video on every render; `_drift` is
+  three sines at 0.1-0.5 Hz with phases from a seed per hand, `_note_variety` a fixed number per note), none
+  touching a fingertip held on its key, and none moving the audio. Sizes at 100%:
+  - A note's lift before its strike: x(1 ± 0.4) from soft to loud (`LIFT_BY_VELOCITY`, by `loudness`) and
+    x(1 ± 0.15) from note to note (`LIFT_VARIETY`), in `_tip_target`.
+  - Idle fingertips wander 0.06 in across, 0.12 in up and down (`FINGER_WANDER_IN`), and dip up to 0.25 in with a
+    neighbour pressing its key (`SYMPATHY`: ring finger with both neighbours fully, index-middle 60%), never below
+    40% of their hover height (`_lively`, by how idle the finger is).
+  - The drawn hand sways 0.16 in across, 0.12 in up and down and turns 1.5° (`BREATH_IN`, `BREATH_DEG`) - applied in
+    `pose` after the fingertips are settled; applied before, it pushed a held tip near its reach limit off its key.
+  - Ember Fountain at 50%: wrist ~1.1 mm from the mechanical path (at most 2.5), idle tips 1-4 mm; RH tips 21 mm
+    above the key 80 ms before soft strikes, 27 mm before loud ones. Notes never pressed, tips off and jolts as
+    before (0 / 10 / R 5, L 14 per minute).
 - **Top travel speed** (2026-09-28; pianist `max_speed`, default 3.0 m/s, 0.5–5): no part of a hand - wrist or
   fingertip - travels faster, and what is heard is what the hands then play.
   - Model (`fingering.travel_time`): moves ease in and out like the animation's smootherstep, whose peak is 1.875× the

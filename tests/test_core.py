@@ -284,6 +284,32 @@ def test_middle_knuckles_arch_without_losing_their_keys():
                 assert abs(tip[0] - kb.key_rects[n.pitch].centerx) < 0.1 * kb.white_w
     assert sorted(raised)[len(raised) // 2] > 0.5 * hands.ARCH_RAISE_IN * a.ppi
 
+def test_human_touch_lifts_loud_notes_higher_and_repeats_exactly():
+    import pygame
+    import pianist as pianists
+    from common import Keyboard, bottom_layout
+    pygame.init()
+    kb = Keyboard(bottom_layout((1600, 900))[0])
+    # the index finger alone on one key, soft and loud in turn, with time to lift between
+    ns = [Note(62, 0.6 + k, 0.9 + k, 30 if k % 2 == 0 else 120, 0, RIGHT, finger=2) for k in range(6)]
+
+    def animator(h):
+        p = pianists.default_pianist()
+        p.behavior["humanize"] = h
+        return hands.HandAnimator(song_of(ns, 7.0), RIGHT, pianist=p)
+
+    def lift(a, k):                     # fingertip height 80 ms before the k-th strike
+        return a.pose(0.6 + k - 0.08, kb)["struct"]["chains"][2][-1][2]
+    a = animator(1.0)
+    soft = sum(lift(a, k) for k in (2, 4)) / 2
+    loud = sum(lift(a, k) for k in (1, 3, 5)) / 3
+    assert loud > 1.2 * soft
+    # deterministic (the same video on every render), and off at 0
+    b = animator(1.0)
+    assert a.pose(2.37, kb)["struct"] == b.pose(2.37, kb)["struct"]
+    flat = animator(0.0)
+    assert abs(lift(flat, 1) - lift(flat, 2)) < 1e-6
+
 def test_hand_split_keeps_to_the_top_speed():
     import hand_split
     import fingering as F

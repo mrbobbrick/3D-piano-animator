@@ -249,6 +249,10 @@ SETTINGS = [
     dict(id="end_height", group="Text", label="End text height on screen", kind="slider", min=-0.4, max=0.4,
          default=0.1, fmt=_sgn, lo="Lower", hi="Higher"),
     # ---- audio
+    dict(id="audio_source", group="Audio", label="Sound", kind="choice", default="hands",
+         options=[("hands", "What the hands play"), ("file", "Every note in the file")],
+         desc="Every note: for music no hands could play (\"black MIDI\", Rush E), the whole piece is heard "
+              "while the hands play what they can"),
     dict(id="audio_gain", group="Audio", label="Volume", kind="slider", min=0.2, max=1.5, default=0.6, fmt=_x),
     dict(id="reverb", group="Audio", label="Reverb", kind="slider", min=0.0, max=1.0, default=0.4, fmt=_pct),
     dict(id="reverb_room", group="Audio", label="Room size", kind="slider", min=0.0, max=1.0, default=0.5,

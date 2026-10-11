@@ -71,3 +71,15 @@ def test_export_plays_extra_hands_in_other_octaves():
     main = sorted(n["pitch"] for n in d["notes"] if len(n["hand"]) == 1)
     extra = sorted(n["pitch"] for n in d["notes"] if len(n["hand"]) > 1)
     assert extra == sorted(p + 12 for p in main if p + 12 <= 108)
+
+
+def test_notes_carry_how_long_the_hands_hold_them():
+    # what blender/scene.py draws with played_lengths (on by default): strike to release, never
+    # longer than the file's note, and shorter where a hand lets go early to reach the next notes
+    import os
+    import export3d
+    assert V.resolve()["played_lengths"] is True
+    here = os.path.dirname(os.path.abspath(__file__))
+    notes = export3d.Export(os.path.join(here, "..", "MIDIs", "demo_song.mid")).data(fps=5)["notes"]
+    assert all(n["start"] - 1e-6 <= n["press"] < n["release"] <= n["end"] + 1e-6 for n in notes)
+    assert any(n["end"] - n["release"] > 0.1 for n in notes)

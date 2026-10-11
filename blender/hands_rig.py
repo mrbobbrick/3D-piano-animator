@@ -12,7 +12,9 @@ Sculpted hands (SOLVED): the palm, knuckles included, is rigid in the
 sculpt's proportions round the exported wrist, and each finger keeps the
 sculpt's bone lengths, bent (solve_finger) to put its tip on the exported
 one; a finger held above the keys is lifted at the knuckle. The hand is
-scaled by its fingers' length; the thumb is lengthened toward the export's.
+scaled by its fingers' length; the thumb keeps the sculpt's proportions, and
+when its key is out of its reach the whole hand moves toward it instead
+(thumb_shift).
 MakeHuman hands: every bone stretches to span its two exported joints,
 scaled first to the exported knuckle width. Either way fingertips land where
 the animation put them (TIP_LIFTS aside).
@@ -60,10 +62,13 @@ PALM_ROOTS = (0, 4, 9, 14, 19)      # thumb CMC and the metacarpals' bases: plac
 # finger bent to reach the exported fingertip (the others stretch every bone onto the exported joints)
 SOLVED = {"sculpted"}
 KNUCKLES = (5, 10, 15, 20)
+ARCH_KNUCKLES = (5, 10, 15)         # the knuckles export3d's "arch" raises (fingers 2-4)
 CHAINS = [(0, (1, 2, 3))] + [(5 + 5 * k, (6 + 5 * k, 7 + 5 * k, 8 + 5 * k)) for k in range(4)]   # (root, joints)
 BEND_MAX = math.radians(125)       # the most the solver bends a finger's middle joint
-THUMB_MAX = 1.15                   # the most the sculpted thumb is lengthened (thumb_scale)
+THUMB_REACH = 0.98                 # share of its full length the sculpted thumb reaches before the hand moves
+THUMB_SHIFT_MAX = 0.025            # m the hand moves toward the thumb's key at most (thumb_shift)
 STRETCHED = {"chains": 0, "stretched": 0, "most": 1.0}   # out-of-reach fingers, for the build's report
+SHIFTED = {"frames": 0, "shifted": 0, "most": 0.0}        # hand moves toward the thumb's key, likewise
 
 
 def rest_points(rig, s):
@@ -105,15 +110,20 @@ def hand_scale(p, rp):
     return total(p) / total(rp)
 
 
-def thumb_scale(p, rp, g):
+def thumb_shift(cmc, tip, length):
     """
-    How much longer than the sculpt's (times g) the thumb is made: as long as the export's, at most
-    THUMB_MAX. The export's thumb is ~25% longer than the sculpt's, which couldn't reach its tip
-    most of the time.
+    How far the whole hand moves so the thumb, rooted at cmc and `length` long, reaches the
+    exported tip with a little bend left (THUMB_REACH): toward the tip by what it lacks, at most
+    THUMB_SHIFT_MAX. The export's thumb is longer than the sculpt's, which couldn't reach its tip
+    61% of the time; lengthening the sculpt's thumb to match made it look freakishly long, so the
+    hand comes closer instead (as a pianist's does) and the fingers, solved from the knuckles to
+    their own tips, bend a little more.
     """
-    def total(pts):
-        return sum((pts[k + 1] - pts[k]).length for k in range(3))
-    return min(THUMB_MAX, max(1.0, total(p) / (total(rp) * g)))
+    d = tip - cmc
+    lack = d.length - THUMB_REACH * length
+    if lack <= 0.0:
+        return Vector((0.0, 0.0, 0.0))
+    return d.normalized() * min(lack, THUMB_SHIFT_MAX)
 
 
 def bend(a, b, c):
@@ -316,18 +326,24 @@ def build_pair(sc, hands, model="sculpted"):
         head01 = rig.data.bones["lowerarm01" + s].head_local.copy()
         head02 = rig.data.bones["lowerarm02" + s].head_local.copy()
         frames = hd["frames"]
+        arches = hd.get("arch") or [[0.0, 0.0, 0.0]] * len(frames)
         n_fr = len(frames)
         chans = {n: ([], [], []) for n in names}       # loc, quat, scale per frame
         g = None
-        for fr in frames:
+        for fr, arch in zip(frames, arches):
             p = [Vector(fr[3 * i:3 * i + 3]) for i in range(27)]
             for i, dz in lifts.items():
                 p[i].z += dz
             p.append((p[24] + p[25]) / 2)
+            # the knuckles of fingers 2-4 come raised (export3d "arch"): the palm's frame is taken
+            # from where the hand solver had them, so the arch doesn't tilt the whole palm
+            raised = dict(zip(ARCH_KNUCKLES, arch))
+            flat = list(p)
+            for i, dz in raised.items():
+                flat[i] = p[i] - Vector((0.0, 0.0, dz))
             if g is None:
                 g = hand_scale(p, rp) if solved else (p[MCP5] - p[MCP2]).length / (rp[MCP5] - rp[MCP2]).length
-                thumb_k = thumb_scale(p, rp, g) if solved else 1.0
-            dref = refs(p)
+            dref = refs(flat)
             pose = {}
             # the palm and the forearm are rigid round the wrist, in the rig's own proportions: the
             # wrist joint at the exported one, turned with the palm; the metacarpals' and the thumb's
@@ -335,7 +351,15 @@ def build_pair(sc, hands, model="sculpted"):
             # higher, and dragged the wrist into a lump); the forearm turned with the arm, its bones
             # where the rig has them relative to the wrist (they don't end exactly at it)
             w0, wr = p[27], rp[27]
-            palm = frame_of(p[MCP3] - w0, dref["side"]) @ frame_of(rp[MCP3] - wr, rref["side"]).transposed()
+            palm = frame_of(flat[MCP3] - w0, dref["side"]) @ frame_of(rp[MCP3] - wr, rref["side"]).transposed()
+            if solved:
+                thumb_len = sum((rp[k + 1] - rp[k]).length for k in range(3)) * g
+                shift = thumb_shift(w0 + palm @ ((rp[0] - wr) * g), p[3], thumb_len)
+                w0 = w0 + shift
+                SHIFTED["frames"] += 1
+                if shift.length > 0.0:
+                    SHIFTED["shifted"] += 1
+                    SHIFTED["most"] = max(SHIFTED["most"], shift.length)
             pose["wrist"] = (w0, palm, (g, g, g))
             q = list(p)
             for i in PALM_ROOTS:
@@ -344,17 +368,16 @@ def build_pair(sc, hands, model="sculpted"):
                 # the knuckles too are rigid in the palm, and each finger is bent to put its tip on
                 # the exported one with the sculpt's own bone lengths (see solve_finger)
                 for i in KNUCKLES:
-                    q[i] = w0 + palm @ ((rp[i] - wr) * g)
+                    q[i] = w0 + palm @ ((rp[i] - wr) * g) + Vector((0.0, 0.0, raised.get(i, 0.0)))
                 for base, joints in CHAINS:
-                    q[joints[0]:joints[-1] + 1] = finger_chain(p, q, rp, g * (thumb_k if base == 0 else 1.0),
-                                                               base, joints, surface if base else None,
+                    q[joints[0]:joints[-1] + 1] = finger_chain(p, q, rp, g, base, joints,
+                                                               surface if base else None,
                                                                lifts.get(joints[-1], 0.0))
                 p = q
             for n, a, b, r in FINGER_BONES:
                 rot = frame_of(p[b] - q[a], dref[r]) @ frame_of(rp[b] - rp[a], rref[r]).transposed()
                 stretch = (p[b] - q[a]).length / max(1e-9, (rp[b] - rp[a]).length)
-                girth = g * math.sqrt(thumb_k) if n.startswith("finger1-") else g    # a longer thumb, a bit thicker
-                pose[n] = (q[a], rot, (girth, stretch, girth))
+                pose[n] = (q[a], rot, (g, stretch, g))
             arm = frame_of(w0 - p[26], dref["side"]) @ frame_of(wr - rp[26], rref["side"]).transposed()
             h02 = w0 + arm @ ((head02 - wr) * g)
             # the forearm's lower bone takes part of the wrist's turn, so the bend runs smoothly
@@ -381,12 +404,16 @@ def build_pair(sc, hands, model="sculpted"):
                 set_keys(rig, path + ".scale", c, fr_idx, [v[c] for v in S])
             for c in range(4):
                 set_keys(rig, path + ".rotation_quaternion", c, fr_idx, [q[c] for q in Q])
-        print(f"hand {h}: scale {g:.3f}, thumb {thumb_k:.3f}")
+        print(f"hand {h}: scale {g:.3f}")
         if solved:
             n = max(1, STRETCHED["chains"])
             print(f"  fingers out of reach (stretched): {100 * STRETCHED['stretched'] / n:.2f}% of {n}, "
                   f"at most {STRETCHED['most']:.3f}")
+            n = max(1, SHIFTED["frames"])
+            print(f"  hand moved toward the thumb's key: {100 * SHIFTED['shifted'] / n:.1f}% of frames, "
+                  f"at most {1000 * SHIFTED['most']:.1f} mm")
             STRETCHED.update(chains=0, stretched=0, most=1.0)
+            SHIFTED.update(frames=0, shifted=0, most=0.0)
 
     # a hand the song doesn't use is left out of the render
     unused = [s for h, s in sides.items() if h not in hands]

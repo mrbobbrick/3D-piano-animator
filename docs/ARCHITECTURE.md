@@ -465,6 +465,7 @@ Detailed design notes, kept up to date as features were added. Start with `CLAUD
     - `SPLAY_LIMIT_DEG`: middle finger ±18° (was ±12), ring −15..+16 (was −12..+14).
     - `_smooth_hand_grid` blends ±`LIMIT_SMOOTH_HAND` 3 steps (±50 ms, the hand travelling) with
       ±`LIMIT_SMOOTH_HAND_ON` 1 step (±17 ms) by how much the keys count (`_key_weight`, max over fingers).
+      (Since 2026-10-11 both are 3: see "Smoother motion" below.)
     - `_key_fix` gives a finger already down on its key its pressing slack (`PRESS_SLACK_DEG`, as `_limit_tip`
       does) and samples 13 depths along a key (was 7).
     - Tried and dropped (no measurable gain): a pattern search after Gauss-Newton, warm-starting from the last
@@ -490,6 +491,45 @@ Detailed design notes, kept up to date as features were added. Start with `CLAUD
   - Winter Wind RH 20-40 s: fingertip jerks (second difference > 0.15 in/frame² at 120 fps) 846 → 134, worst
     1.15 → 0.67; frames with a finger > 95% stretched 450 → 166. Pressed tips > 0.1 key off: Op. 25 No. 10 (0-30 s)
     55 → 69, Winter Wind 27 → 29, demo 9 → 23 (worst 0.35). ~2.0-2.4 ms per hand per frame.
+- **Smoother motion, every note pressed** (2026-10-11, after viewers called the 3D hands twitchy and spider-like,
+  "especially the left hand", and saw notes missing at the start of Ember Fountain). Measured on Ember Fountain,
+  the demo song and a generated Op. 25 No. 10-like test (octaves and a held inner note every 0.14 s, both hands,
+  45 s): notes never pressed (`export3d.Export.pressed_map`), fingertip frames > 0.1 white key off the key they
+  hold, sideways fingertip jolts (> 60 m/s² at 60 fps, per minute) and wrist acceleration (p99).
+  - Early release against every chord struck while a key is held (`__init__`), not just the next one: a bass
+    note held through a broken chord was out of reach of its third or fourth note, whose finger landed 1-2 keys
+    short. Ember Fountain LH: 8 notes never pressed -> 1.
+  - Rolled chords (`_roll_wide_chords`): each note waits until every lower note it can't be held with has been
+    down `ROLL_LAND_T` (0.13 s), and those let go just before it. With the top note 35 ms behind, the hand left
+    for it before the inner fingers landed (index on B4 instead of A4). Ember Fountain: 7 RH notes -> 0; rolls
+    now take up to ~0.2 s.
+  - Fingertips ease on and off their keys (`_eased_tip`, `PIN_EASE_T` 0.12 s): held exactly on the key while
+    pressing, then switched to the averaged path the instant they let go, they jumped sideways in one frame -
+    most of the jolts were within 10 ms of a release. Between two keys less than 2·`PIN_EASE_T` apart: one
+    smootherstep arc from the spot left to the spot struck. Thumb going back and forth 0.2 s apart: worst
+    0.24 -> 0.04 white key / frame² (120 fps).
+  - One hand smoothing window (`LIMIT_SMOOTH_HAND_ON` 1 -> 3): blending the ±1 and ±3 step averages by a weight
+    that changes as keys come and go itself shook the wrist, and widening the travelling window made it worse.
+    The narrow window was there to keep tips on fast chords; with the eased tips, the octave test is better on
+    both counts.
+  - Results (original -> now). Ember Fountain: never pressed 15 -> 0; tips off 741 frames (worst 2.3 keys) -> 10
+    (0.6); jolts/min R 30 -> 5, L 85 -> 14; wrist p99 R 22 -> 11, L 36 -> 19 m/s². Octave test: off 34 -> 7;
+    jolts R 76 -> 5, L 27 -> 5. Demo: L jolts 42 -> 16, fingertip jerk p99.9 10221 -> 3961 m/s³.
+- **A rounder hand, not a claw** (2026-10-11; viewers saw "spiders", "xenomorph facehuggers"). Measured on the
+  export (Ember Fountain), the middle finger's first phalanx rose 20° from its knuckle and the next two dived at
+  −57° / −66°: knuckle joints bent back 15° on average (more than 20° in 25-37% of frames), middle joints at
+  65-70°, the knuckles 44 mm above the keys with the fingertips only ~46 mm in front of them. The finger chain has
+  one solution for a given tip (`solve_chain`), so the shape comes from where the hand is. Raising the whole hand
+  or setting the fingertips further forward fixed the shape but lost stretches (a 2-5 reach of a 7th while the
+  index holds its key): the thumb and the little finger already play at 91-99% of their length, while 2-4 have
+  20+ mm to spare. So only the knuckles of 2-4 are drawn higher (`arch_at`, `ARCH_RAISE_IN` 0.6 in), each as far
+  as its finger still reaches its tip at `ARCH_REACH` 95% of its length; the room is the least over ±8 grid
+  steps then averaged over as many, so a knuckle settles ahead of a stretch. Solver, fingertips and keys are
+  untouched. Ember Fountain: knuckle joint −15° -> +7-10° (bent back > 20°: 37% -> 6% of frames), middle joints
+  65-70° -> 56-60°, middle knuckle 44 -> 59 mm; still 0 notes missed, tips off and jolts unchanged. The palm now
+  slopes up 16° from the wrist: the wrist can't rise with it, as it carries the thumb's root. The export passes
+  the raise per frame ("arch"); `hands_rig` takes the palm's frame from the unraised knuckles and adds the raise
+  to the sculpt's own knuckles 2-4, so the arch doesn't tilt the whole palm.
 - **Top travel speed** (2026-09-28; pianist `max_speed`, default 3.0 m/s, 0.5–5): no part of a hand - wrist or
   fingertip - travels faster, and what is heard is what the hands then play.
   - Model (`fingering.travel_time`): moves ease in and out like the animation's smootherstep, whose peak is 1.875× the
@@ -597,6 +637,16 @@ Detailed design notes, kept up to date as features were added. Start with `CLAUD
   previews use `Export.pressed_map()` (a pose just after each strike, or halfway through: ~40 ms a note, ~50 s
   for 1249 notes), worked out in the background by the server and passed as each note's "pressed". New Ember
   Fountain: 15 (map) / 14 (render) of 1249 notes not pressed. The audio keeps every note.
+- Played lengths (`played_lengths`, on by default, 2026-10-11): a note is drawn (and lights the runway, carries
+  its finger number) from its finger's strike to its release (`press` / `release`, the hands' performance), not
+  the MIDI file's `start` / `end` (`Scene.span`). The hands let go early to reach the next notes or cross
+  (hands.py), and drawn at the file's length a note stayed on screen after its key came up, which read as the
+  hands not holding the notes. Ember Fountain: 259 of 1249 notes released >0.1 s before their written end, 31
+  by >0.5 s (482 s of drawn note time against 389 s held); 150 of 150 sampled notes keep their key >=40% down
+  from strike to release. The pedal still sustains the sound.
+- Sparks follow velocity as the glow does (2026-10-11): a note throws x(1 + `velocity_glow`·(1.6·vel/127 − 0.8))
+  sparks (was a fixed x(0.5 + vel/127)). Embers toned down after "I need a welding mask": sparks 26 -> 12, trickle
+  18 -> 6 per s, spark glow 14 -> 8, `velocity_glow` 0.4 -> 0.8 (loud and soft notes look clearly different).
 - The studio page: settings | preview | render and videos side by side from 1450 px wide (the last column drops
   under the preview below that, everything stacks below 960 px). Settings search and "changed only", undo/redo, a
   change count on each tab, a ↺ on each changed setting, typed slider values (in the shown units, clamped to the
@@ -641,8 +691,13 @@ Detailed design notes, kept up to date as features were added. Start with `CLAUD
   held above the keys keeps the curve it would have resting on the key under it (`surface`) and is lifted at the
   knuckle, its tip on the line from the knuckle to the exported one: the export raises a tip toward the knuckle,
   and bending the finger to follow curled it into a claw (pressing fingers already sit at ~84% of full reach).
-  The export's thumb is ~25% longer than the sculpt's and was out of reach 61% of the time: it is lengthened by
-  up to `THUMB_MAX` = 1.15 (thickened by the square root). Out of reach, a finger straightens and stretches
+  The export's thumb is longer than the sculpt's and was out of reach 61% of the time. It used to be lengthened by
+  up to 1.15 (and thickened), which viewers found freakishly long; now it keeps the sculpt's size and the whole
+  hand (wrist, palm, knuckles, forearm) moves toward the thumb's tip by what it lacks to reach it at
+  `THUMB_REACH` (98%) of its length, at most `THUMB_SHIFT_MAX` (2.5 cm) (`thumb_shift`; the fingers, solved from
+  the knuckles, bend a little more). Simulated on Ember Fountain with a stand-in thumb calibrated to the 61%
+  (2026-10-11): the hand moves in 68% (right) / 87% (left) of frames, median 4-5 mm, at most 9 mm; the thumb
+  always reaches; fingers out of reach 0.01%. The build prints the real figures. Out of reach, a finger straightens and stretches
   (demo song: 1-4% of finger positions, at most 1.06; the build prints it). Contact after the tip-only
   `TIP_LIFTS["sculpted"]` (fingers 2.7-3.0 mm, the thumb on its side 7.9 mm): -0.8..+0.3 mm, median -0.1.
 - The studio server is stdlib only (`ThreadingHTTPServer` on 127.0.0.1). Previews: the song is solved once per

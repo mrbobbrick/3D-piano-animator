@@ -14,6 +14,9 @@ Per frame and hand, 27 points (x, y, z):
     4-23   fingers 2-5: metacarpal base, MCP, PIP, DIP, tip (5 points each)
     24-25  wrist: radius side, ulna side
     26     forearm end (toward the elbow)
+and "arch": per frame, how much higher than the hand solver placed them the
+knuckles of fingers 2-4 are (hands.ARCH_FINGERS, metres; already in their
+points), so the 3D rig can take the palm's frame from the solver's knuckles.
 """
 
 import argparse
@@ -29,7 +32,7 @@ import pygame
 
 import pianist as pianists
 from common import Keyboard, Performance
-from hands import KEY_TRAVEL_IN, WHITE_KEY_IN, HandAnimator, pair_hands
+from hands import ARCH_FINGERS, KEY_TRAVEL_IN, WHITE_KEY_IN, HandAnimator, pair_hands
 
 PRESSED_DOWN = 0.4           # a key counts as pressed when its finger gets it this far down (share of its travel)
 from midi_loader import LEFT, RIGHT, MidiSong, is_black_key, load_song
@@ -112,11 +115,14 @@ class Export:
         t1 = self.last + TAIL_T if end is None else end
         n = int(round((t1 - t0) * fps)) + 1
         frames = {h: [] for h in self.hands}
+        arches = {h: [] for h in self.hands}
         clock = time.time()
         for i in range(n):
             t = t0 + i / fps
             for h, a in self.hands.items():
                 frames[h].append(flatten(a.pose(t, kb), kb, m))
+                arch = a.arch_at(t)
+                arches[h].append([round(arch[f] * m, 5) for f in ARCH_FINGERS])
             if verbose and i % (fps * 10) == 0:
                 print(f"  {t:7.1f} s  ({i}/{n} frames, {time.time() - clock:.0f} s)", flush=True)
         notes = []
@@ -135,7 +141,7 @@ class Export:
             "video_t1": t1 if video_end is None else video_end,
             "pianist": pianists.active().name,
             "keyboard": keyboard_data(kb, m),
-            "hands": {h: {"mirror": h[0] != RIGHT, "frames": f} for h, f in frames.items()},
+            "hands": {h: {"mirror": h[0] != RIGHT, "frames": f, "arch": arches[h]} for h, f in frames.items()},
             "notes": notes,
             "pedals": [[round(t, 4), c, v] for t, c, v in song.controls],
             "bars": [round(b, 4) for b in song.bar_times],

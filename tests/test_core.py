@@ -1,4 +1,5 @@
 """Loading, fingering, pedals and hand crossings - no window needed."""
+import bisect
 import math
 
 from conftest import midi_path
@@ -217,6 +218,71 @@ def test_held_key_is_let_go_before_a_leap():
     ends = {n.pitch: e for s, e, n in a.performance}
     assert ends[84] <= 0.5 - 0.1
 
+
+def test_held_bass_note_is_let_go_before_a_later_note_out_of_reach():
+    # left hand: D2 held under a broken chord whose third note (E3, a 9th up on 2) can't be
+    # reached while it is down - it used to be checked against the next note only
+    ns = [Note(38, 0.0, 1.0, 80, 1, LEFT, finger=5), Note(45, 0.3, 1.0, 80, 1, LEFT, finger=3),
+          Note(52, 0.6, 1.0, 80, 1, LEFT, finger=2)]
+    a = hands.HandAnimator(song_of(ns), LEFT)
+    ends = {n.pitch: e for s, e, n in a.performance}
+    assert ends[38] <= 0.6
+
+
+def test_rolled_chord_waits_for_each_finger_to_land():
+    # a 10th: the top note can't be held with the thumb or the index, so it is struck only after
+    # they have been down ROLL_LAND_T, and they let go just before it
+    ns = [Note(p, 0.0, 1.0, 80, 0, RIGHT, finger=f) for p, f in ((66, 1), (69, 2), (73, 3), (81, 5))]
+    a = hands.HandAnimator(song_of(ns), RIGHT)
+    assert a.rolled == 1
+    press = {n.pitch: (s, e) for s, e, n in a.performance}
+    for low in (66, 69):
+        assert press[81][0] - press[low][0] >= hands.ROLL_LAND_T - 1e-6
+        assert press[low][1] <= press[81][0]
+    assert press[66][0] < press[69][0] < press[73][0] < press[81][0]
+
+
+def test_fingers_ease_off_their_keys_without_a_jolt():
+    import pygame
+    from common import Keyboard, bottom_layout
+    pygame.init()
+    # the thumb goes back and forth between two keys 0.2 s apart: it used to be held exactly on
+    # its key and then switched to its smoothed path the moment it let go (0.24 white keys per
+    # frame squared at 120 fps); now it eases off (0.04)
+    ns = []
+    for k in range(6):
+        t = 0.5 + k * 0.4
+        ns.append(Note(60 if k % 2 == 0 else 64, t, t + 0.2, 80, 0, RIGHT, finger=1))
+    kb = Keyboard(bottom_layout((1600, 900))[0])
+    a = hands.HandAnimator(song_of(ns, 3.5), RIGHT)
+    fps = 120
+    xs = [a.pose(i / fps, kb)["struct"]["chains"][1][-1][0] for i in range(int(3.2 * fps))]
+    acc = [abs(xs[i] - 2 * xs[i - 1] + xs[i - 2]) for i in range(2, len(xs))]
+    assert max(acc) < 0.1 * kb.white_w
+
+def test_middle_knuckles_arch_without_losing_their_keys():
+    import pygame
+    from common import Keyboard, bottom_layout
+    pygame.init()
+    # five-finger position, each finger in turn: the knuckles of 2-4 are drawn higher than
+    # placed (a rounder hand, not a claw) while every pressed fingertip stays on its key
+    ns = [Note(60 + (0, 2, 4, 5, 7)[k % 5], 0.5 + 0.3 * k, 0.78 + 0.3 * k, 80, 0, RIGHT, finger=1 + k % 5)
+          for k in range(15)]
+    kb = Keyboard(bottom_layout((1600, 900))[0])
+    a = hands.HandAnimator(song_of(ns, 5.5), RIGHT)
+    raised = []
+    for i in range(10, 50):
+        t = i / 10
+        pose = a.pose(t, kb)
+        arch = a.arch_at(t)
+        assert all(0.0 <= r <= hands.ARCH_RAISE_IN * a.ppi + 1e-6 for r in arch.values())
+        raised.append(arch[3])
+        for f in range(1, 6):
+            if a._pressing(f, t):
+                n = a.by_finger[f][bisect.bisect_right(a.finger_starts[f], t) - 1]
+                tip = pose["struct"]["chains"][f][-1]
+                assert abs(tip[0] - kb.key_rects[n.pitch].centerx) < 0.1 * kb.white_w
+    assert sorted(raised)[len(raised) // 2] > 0.5 * hands.ARCH_RAISE_IN * a.ppi
 
 def test_hand_split_keeps_to_the_top_speed():
     import hand_split

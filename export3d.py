@@ -32,7 +32,7 @@ import pygame
 
 import pianist as pianists
 from common import Keyboard, Performance
-from hands import ARCH_FINGERS, KEY_TRAVEL_IN, WHITE_KEY_IN, HandAnimator, pair_hands
+from hands import ARCH_FINGERS, KEY_TRAVEL_IN, WHITE_KEY_IN, HandAnimator, pair_hands, seat_side_by_side
 
 PRESSED_DOWN = 0.4           # a key counts as pressed when its finger gets it this far down (share of its travel)
 from midi_loader import LEFT, RIGHT, MidiSong, is_black_key, load_song
@@ -56,13 +56,34 @@ def transposed(song, shift):
     return s
 
 
-def build(song, kb=None):
+def build(song, kb=None, seat=0):
     kb = kb or keyboard()
     hands = {h: HandAnimator(song, h) for h in (RIGHT, LEFT) if any(n.hand == h for n in song.notes)}
     for a in hands.values():
         a.black_rise_in = BLACK_RISE_IN
+        a.seat = seat
     pair_hands(hands.values())
     return kb, hands
+
+
+def shared(song, pairs):
+    """
+    The song shared among `pairs` pairs of hands side by side (hand_split.split_among):
+    [(sub-song with its notes labelled L / R, seat in semitones)], lowest pair first.
+    """
+    from hand_split import split_among
+    who = split_among(song.notes, 2 * pairs)
+    out = []
+    for k in range(pairs):
+        notes = [replace(n, hand=LEFT if who[id(n)] == 2 * k else RIGHT, finger=None)
+                 for n in song.notes if who[id(n)] // 2 == k]
+        s = MidiSong(notes, song.tracks, song.duration, song.bar_times, song.beat_times, song.path,
+                     song.raw_controls)
+        s.title = song.title
+        # the pianist sits in front of the middle of what they play (usually D4)
+        mid = sorted(n.pitch for n in notes)[len(notes) // 2] if notes else 62
+        out.append((s, mid - 62))
+    return out
 
 
 def flatten(pose, kb, m):
@@ -92,11 +113,24 @@ def keyboard_data(kb, m):
 class Export:
     """A song solved once (fingering, hands), sampled as often as needed (the 3D studio's previews)."""
 
-    def __init__(self, path, clones=()):
-        """clones: semitone shifts of extra pairs of hands (video_style.clone_shifts), "R2"/"L2", ... ."""
+    def __init__(self, path, clones=(), pairs=1):
+        """
+        clones: semitone shifts of extra pairs of hands playing the same music
+        (video_style.clone_shifts), "R2"/"L2", ... . pairs: how many pairs of
+        hands share the music instead (export3d.shared), labelled the same way.
+        """
         self.path = path
         self.song = load_song(path)
-        self.kb, self.hands = build(self.song)
+        if pairs > 1:
+            self.kb, self.hands = keyboard(), {}
+            seated = []
+            for k, (s, seat) in enumerate(shared(self.song, pairs), start=1):
+                _, hs = build(s, self.kb, seat)
+                seated.append(hs)
+                self.hands.update({f"{h}{k if k > 1 else ''}": a for h, a in hs.items()})
+            seat_side_by_side(seated)
+        else:
+            self.kb, self.hands = build(self.song)
         for k, shift in enumerate(clones, start=2):
             _, extra = build(transposed(self.song, shift), self.kb)
             self.hands.update({f"{h}{k}": a for h, a in extra.items()})
@@ -197,8 +231,8 @@ class Export:
         return data
 
 
-def export(path, out, fps=60, start=None, end=None, clones=()):
-    return Export(path, clones).save(out, fps, start, end, verbose=True)
+def export(path, out, fps=60, start=None, end=None, clones=(), pairs=1):
+    return Export(path, clones, pairs).save(out, fps, start, end, verbose=True)
 
 
 def main():
@@ -209,10 +243,11 @@ def main():
     ap.add_argument("--start", type=float, help="first frame's song time (default: 3 s before the first note)")
     ap.add_argument("--end", type=float, help="last frame's song time (default: 2 s after the last release)")
     ap.add_argument("--clones", default="", help="extra pairs of hands, as semitone shifts: e.g. 12,-12")
+    ap.add_argument("--pairs", type=int, default=1, help="pairs of hands sharing the music (side by side)")
     args = ap.parse_args()
     pygame.init()
     clones = [int(c) for c in args.clones.split(",") if c.strip()]
-    export(args.midi, args.out, args.fps, args.start, args.end, clones)
+    export(args.midi, args.out, args.fps, args.start, args.end, clones, args.pairs)
 
 
 if __name__ == "__main__":

@@ -87,9 +87,9 @@ def stage(*words):
     print("@" + " ".join(str(w) for w in words), flush=True)
 
 
-def export(midi, out, fps, start=None, end=None, clones=()):
+def export(midi, out, fps, start=None, end=None, clones=(), pairs=1):
     run([sys.executable, os.path.join(HERE, "export3d.py"), midi, out, "--fps", str(fps),
-         "--clones", ",".join(str(c) for c in clones)]
+         "--clones", ",".join(str(c) for c in clones), "--pairs", str(pairs)]
         + (["--start", str(start)] if start is not None else [])
         + (["--end", str(end)] if end is not None else []), stdout=subprocess.DEVNULL)
     with open(out) as fh:
@@ -143,14 +143,15 @@ def main():
     # 1. hand animation (and any extra pairs of hands)
     stage("stage", "export")
     anim = os.path.join(work, "anim.json")
-    data = export(args.midi, anim, args.fps, args.start, args.end, video_style.clone_shifts(style))
+    data = export(args.midi, anim, args.fps, args.start, args.end, video_style.clone_shifts(style),
+                  video_style.shared_pairs(style))
     stage("frames", data["frames"], frames)
 
     # 2. audio of what the hands play
     stage("stage", "audio")
     mid = os.path.join(work, "performance.mid")
     wav = os.path.join(work, "performance.wav")
-    performance_midi(data, mid, style["extra_heard"])
+    performance_midi(data, mid, video_style.extra_heard(style))
     run([FLUIDSYNTH, "-ni", "-q", "-g", f"{style['audio_gain']:.2f}", "-r", str(SAMPLE_RATE),
          "-R", "1" if style["reverb"] > 0 else "0",
          "-o", f"synth.reverb.level={style['reverb']:.2f}", "-o", f"synth.reverb.room-size={style['reverb_room']:.2f}",

@@ -180,7 +180,12 @@ SETTINGS = [
     dict(id="skin_tint", group="Hands", label="Skin tint", kind="color", default=(255, 255, 255),
          desc="Multiplies the skin's colour (white leaves it as it is)"),
     dict(id="extra_hands", group="Hands", label="Extra pairs of hands", kind="slider", min=0, max=3, default=0,
-         fmt=_n, step=1, desc="Clones that play the same music in other octaves - just for fun"),
+         fmt=_n, step=1, desc="More pianists at the keyboard: copies of the hands, or sharing the music (below)"),
+    dict(id="extra_mode", group="Hands", label="Extra hands", kind="choice", default="copies",
+         options=[("copies", "Copy the music in other octaves (just for fun)"),
+                  ("share", "Share the music side by side (play what two hands can't)")],
+         desc="Share: the music is divided among all the pairs, each pianist taking a register, so passages "
+              "too wide or too fast for two hands are played as written"),
     dict(id="extra_spacing", group="Hands", label="Octaves between the pairs", kind="slider", min=1, max=3,
          default=1, fmt=_n, step=1),
     dict(id="extra_heard", group="Hands", label="Hear the extra hands", kind="toggle", default=True),
@@ -324,11 +329,23 @@ def to_linear(c, k=1.0):
 
 def clone_shifts(style):
     """Semitone shifts of the extra pairs of hands: +1, -1, +2, -2 ... times the spacing in octaves."""
+    if style["extra_mode"] == "share":
+        return []
     out = []
     for k in range(1, int(style["extra_hands"]) + 1):
         octaves = (k + 1) // 2 * int(style["extra_spacing"])
         out.append(12 * octaves * (1 if k % 2 else -1))
     return out
+
+
+def shared_pairs(style):
+    """How many pairs of hands share the music (export3d.shared): 1 unless extra_mode is "share"."""
+    return 1 + int(style["extra_hands"]) if style["extra_mode"] == "share" else 1
+
+
+def extra_heard(style):
+    """Whether the extra pairs are heard: always when they share the music (it is theirs to play)."""
+    return style["extra_mode"] == "share" or style["extra_heard"]
 
 
 def note_color(style, note, black):

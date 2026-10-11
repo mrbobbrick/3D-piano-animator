@@ -104,6 +104,25 @@ def _hand_cost(hand, t, notes, side, other):
         return 0.0
     ps = [n.pitch for n in notes]
     lo, hi = ps[0], ps[-1]
+    c = _play_cost(hand, t, notes)
+    # --- the right hand above the left
+    if other.last_lo is not None and t - other.last_t < 1.0:
+        if side == RIGHT and lo < other.center - 2:
+            c += 0.25 * (other.center - 2 - lo)
+        if side == LEFT and hi > other.center + 2:
+            c += 0.25 * (hi - other.center - 2)
+    # --- range preference (weak)
+    if side == RIGHT:
+        c += 0.02 * sum(max(0, 55 - p) for p in ps)
+    else:
+        c += 0.02 * sum(max(0, p - 67) for p in ps)
+    return c
+
+
+def _play_cost(hand, t, notes):
+    """What it costs `hand` (history) to play `notes` (sorted, not empty) at time t, whichever hand it is."""
+    ps = [n.pitch for n in notes]
+    lo, hi = ps[0], ps[-1]
     c = 0.0
     # --- how many notes and how wide, including what this hand still holds
     held = [p for e, p in hand.held if e > t + HELD_TOL]
@@ -160,17 +179,6 @@ def _hand_cost(hand, t, notes, side, other):
         # how fast the hand must travel to get there: of two hands that could
         # take a note, the one that needn't hurry should
         c += SPEED_COST * d / max(dt, 0.05) / 40.0
-    # --- the right hand above the left
-    if other.last_lo is not None and t - other.last_t < 1.0:
-        if side == RIGHT and lo < other.center - 2:
-            c += 0.25 * (other.center - 2 - lo)
-        if side == LEFT and hi > other.center + 2:
-            c += 0.25 * (hi - other.center - 2)
-    # --- range preference (weak)
-    if side == RIGHT:
-        c += 0.02 * sum(max(0, 55 - p) for p in ps)
-    else:
-        c += 0.02 * sum(max(0, p - 67) for p in ps)
     return c
 
 
@@ -292,5 +300,149 @@ def split_hands(notes, pianist=None):
             out[id(n)] = LEFT
         for n in ns[k:]:
             out[id(n)] = RIGHT
+        j = bi
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# Several pairs of hands sharing one piece
+# --------------------------------------------------------------------------- #
+SHARE_BEAM = 16          # candidates kept per group
+SHARE_KBEST = 3          # splits of a group tried per candidate
+SHARE_LANE = 0.03        # per semitone a note lies outside its hand's share of the range
+SHARE_ORDER = 0.4        # per semitone a hand reaches past its neighbour's centre
+# Between two pianists (one's right hand, the next one's left) the hands can't pass: a run must keep
+# SHARE_GAP semitones from the keys the neighbour holds or played within SHARE_RECENT_T
+SHARE_GAP = 3
+SHARE_GAP_COST = 2.0     # per semitone short of that
+SHARE_RECENT_T = 0.4
+SHARE_HAND_W = 9         # semitones a hand covers however few keys it plays (about five white keys)
+# with hands to spare, a hand needn't stretch: what it strikes and still holds costs this much per
+# semitone beyond SHARE_SPAN (on top of _play_cost, which allows two hands a 10th)
+SHARE_SPAN = 12
+SHARE_SPAN_COST = 2.0
+
+
+def _lanes(notes, n):
+    """Each of n hands' share of the piece's range (pitch quantiles, low to high) and its centre."""
+    ps = sorted(n_.pitch for n_ in notes)
+    q = lambda x: ps[min(len(ps) - 1, int(x * len(ps)))]
+    return [(q(i / n), q((i + 1) / n) if i + 1 < n else ps[-1], q((i + 0.5) / n)) for i in range(n)]
+
+
+def _extent(lo, hi):
+    """The keys a hand spans while playing lo..hi: at least SHARE_HAND_W wide, centred on them."""
+    m = (lo + hi) / 2
+    return min(lo, m - SHARE_HAND_W / 2), max(hi, m + SHARE_HAND_W / 2)
+
+
+def _occupied(hand, t):
+    """The keys a hand spans at t (_extent of what it holds or played within SHARE_RECENT_T), or None."""
+    ps = [p for e, p in hand.held if e > t + HELD_TOL]
+    if hand.last_lo is not None and t - hand.last_t < SHARE_RECENT_T:
+        ps += [hand.last_lo, hand.last_hi]
+    return _extent(min(ps), max(ps)) if ps else None
+
+
+def split_among(notes, n, pianist=None):
+    """
+    {id(note): hand index} for n hands, 0 the lowest: as split_hands, but each
+    chord is cut into n runs by pitch (low notes to low hands), so pairs of
+    hands side by side can share music that two hands can't play. Each hand
+    pays what playing its notes costs (_play_cost: span, load, speed - a hand
+    never has to leap faster than the pianist's top speed if another can take
+    the note), plus a mild cost for straying out of its share of the range and
+    for reaching past its neighbours, so the hands stay in order and apart.
+    """
+    if pianist is None:
+        try:
+            import pianist as pianists
+            pianist = pianists.active()
+        except Exception:
+            pianist = None
+    _fit_spans(pianist)
+    global MAX_SPEED
+    MAX_SPEED = float(pianist.b("max_speed")) if pianist is not None else 3.0
+    groups = _groups(notes)
+    if not groups:
+        return {}
+    lanes = _lanes(notes, n)
+    beam = [(0.0, tuple(_Hand(float(c)) for _, _, c in lanes))]
+    history = []
+    for t, ns in groups:
+        m = len(ns)
+        cand = []
+        for bi, (cost, hs) in enumerate(beam):
+            # what each hand would pay for each run ns[a:b] of the chord
+            def run_cost(i, a, b):
+                if a == b:
+                    return 0.0
+                part = ns[a:b]
+                c = _play_cost(hs[i], t, part)
+                held = [p for e, p in hs[i].held if e > t + HELD_TOL]
+                wide = max([part[-1].pitch] + held) - min([part[0].pitch] + held)
+                c += SHARE_SPAN_COST * max(0, wide - SHARE_SPAN)
+                lo, hi, _ = lanes[i]
+                c += SHARE_LANE * sum(max(0, lo - x.pitch, x.pitch - hi) for x in part)
+                if i > 0 and t - hs[i - 1].last_t < 1.0 and part[0].pitch < hs[i - 1].center:
+                    c += SHARE_ORDER * (hs[i - 1].center - part[0].pitch)
+                if i + 1 < n and t - hs[i + 1].last_t < 1.0 and part[-1].pitch > hs[i + 1].center:
+                    c += SHARE_ORDER * (part[-1].pitch - hs[i + 1].center)
+                # hands of different pianists keep apart: an even hand (a left hand) has the
+                # previous pianist's right hand below it, an odd one the next pianist's left above
+                if (i % 2 == 0 and i > 0) or (i % 2 == 1 and i + 1 < n):
+                    own = _extent(part[0].pitch, part[-1].pitch)
+                    if i % 2 == 0 and i > 0:
+                        occ = _occupied(hs[i - 1], t)
+                        if occ is not None and own[0] < occ[1] + SHARE_GAP:
+                            c += SHARE_GAP_COST * (occ[1] + SHARE_GAP - own[0])
+                    if i % 2 == 1 and i + 1 < n:
+                        occ = _occupied(hs[i + 1], t)
+                        if occ is not None and own[1] > occ[0] - SHARE_GAP:
+                            c += SHARE_GAP_COST * (own[1] - occ[0] + SHARE_GAP)
+                return c
+            # the best few ways to cut the chord into n runs (k-best over the hands in turn)
+            best = [[[] for _ in range(m + 1)] for _ in range(n + 1)]
+            best[0][0] = [(0.0, ())]
+            for i in range(n):
+                for b in range(m + 1):
+                    opts = []
+                    for a in range(max(0, b - 5), b + 1):
+                        if not best[i][a]:
+                            continue
+                        rc = run_cost(i, a, b)
+                        opts += [(c + rc, cuts + (b,)) for c, cuts in best[i][a]]
+                    opts.sort(key=lambda x: x[0])
+                    best[i + 1][b] = opts[:SHARE_KBEST]
+            for c, cuts in best[n][m]:
+                cand.append((cost + c, bi, cuts))
+        cand.sort(key=lambda x: x[0])
+        new, back, seen = [], [], set()
+        for c, bi, cuts in cand:
+            hs = beam[bi][1]
+            a = 0
+            nh = []
+            for i, b in enumerate(cuts):
+                nh.append(hs[i].after(t, ns[a:b]))
+                a = b
+            key = tuple(round(h.center) for h in nh)
+            if key in seen:
+                continue
+            seen.add(key)
+            new.append((c, tuple(nh)))
+            back.append((bi, cuts))
+            if len(new) >= SHARE_BEAM:
+                break
+        history.append(back)
+        beam = new
+    out = {}
+    j = 0
+    for gi in range(len(groups) - 1, -1, -1):
+        bi, cuts = history[gi][j]
+        a = 0
+        for i, b in enumerate(cuts):
+            for x in groups[gi][1][a:b]:
+                out[id(x)] = i
+            a = b
         j = bi
     return out

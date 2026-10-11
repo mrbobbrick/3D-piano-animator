@@ -83,3 +83,59 @@ def test_notes_carry_how_long_the_hands_hold_them():
     notes = export3d.Export(os.path.join(here, "..", "MIDIs", "demo_song.mid")).data(fps=5)["notes"]
     assert all(n["start"] - 1e-6 <= n["press"] < n["release"] <= n["end"] + 1e-6 for n in notes)
     assert any(n["end"] - n["release"] > 0.1 for n in notes)
+
+
+def test_shared_hands_mode():
+    st = V.resolve({"extra_hands": 1, "extra_mode": "share", "extra_heard": False})
+    assert V.clone_shifts(st) == [] and V.shared_pairs(st) == 2 and V.extra_heard(st)
+    st = V.resolve({"extra_hands": 1})
+    assert V.clone_shifts(st) == [12] and V.shared_pairs(st) == 1
+
+
+def test_pairs_share_music_two_hands_cannot_play():
+    # four parts at once over five octaves: a bass, held chords, an arpeggio and a fast melody
+    import export3d
+    from midi_loader import Note
+    import hand_split
+    ns = []
+    for bar in range(4):
+        t = bar * 2.4
+        ns += [Note(26, t + b * 0.6, t + b * 0.6 + 0.5, 80, 0, "R") for b in range(4)]
+        ns += [Note(p, t, t + 2.35, 60, 0, "R") for p in (62, 66, 69)]
+        ns += [Note(50 + (0, 4, 7, 12)[k % 4], t + k * 0.15, t + k * 0.15 + 0.13, 70, 0, "R") for k in range(16)]
+        ns += [Note(86 + (0, 4, 7, 12, 7, 4)[k % 6], t + k * 0.15, t + k * 0.15 + 0.13, 90, 0, "R") for k in range(16)]
+    who = hand_split.split_among(ns, 4)
+    assert set(who) == {id(n) for n in ns}
+    by = {i: [n for n in ns if who[id(n)] == i] for i in range(4)}
+    assert all(by[i] for i in range(4))                     # every hand has a part
+    # hands stay in order: each hand's notes, chord by chord, below the next hand's
+    for t in sorted({n.start for n in ns}):
+        tops = [max((n.pitch for n in by[i] if n.start == t), default=None) for i in range(4)]
+        bots = [min((n.pitch for n in by[i] if n.start == t), default=None) for i in range(4)]
+        for i in range(3):
+            if tops[i] is not None and bots[i + 1] is not None:
+                assert tops[i] <= bots[i + 1]
+    # and nothing one hand plays at once is wider than a hand
+    for i in range(4):
+        for t in {n.start for n in by[i]}:
+            chord = [n.pitch for n in by[i] if n.start == t]
+            assert max(chord) - min(chord) <= 12
+
+
+def test_shared_export_seats_each_pianist_at_their_part(tmp_path):
+    import pretty_midi
+    import export3d
+    pm = pretty_midi.PrettyMIDI()
+    ins = pretty_midi.Instrument(0)
+    for k in range(8):
+        for p in (36, 43, 60, 64, 67, 84, 88, 91):
+            ins.notes.append(pretty_midi.Note(80, p, k * 0.5, k * 0.5 + 0.45))
+    pm.instruments.append(ins)
+    path = str(tmp_path / "wide.mid")
+    pm.write(path)
+    e = export3d.Export(path, pairs=2)
+    assert set(e.hands) == {"L", "R", "L2", "R2"}
+    assert e.hands["L2"].seat > e.hands["R"].seat
+    assert e.hands["L2"].neighbour is e.hands["R"] and e.hands["R"].neighbour is e.hands["L2"]
+    played = sorted(n.pitch for a in e.hands.values() for _, _, n in a.performance)
+    assert played == sorted(n.pitch for n in pm.instruments[0].notes)

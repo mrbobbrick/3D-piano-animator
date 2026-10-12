@@ -4,7 +4,7 @@ falling notes, and the performance's audio.
 
     python render_video.py song.mid [out.mp4] [--style NAME|FILE] [--quality balanced]
                            [--view auto|bird|pianist|side|top] [--fps 30] [--res 1920x1080]
-                           [--start S --end S] [--keep]
+                           [--start S --end S] [--workers 2] [--keep]
 
 --style is a preset (video_style.PRESETS: Classic, Embers, Neon, ...), one of
 your saved styles, or a JSON file. --quality: max, high, balanced, fast or
@@ -15,7 +15,8 @@ Steps: export3d.py (hand animation) -> Blender (blender/render3d.py, PNG frames,
 and which notes the fingers get down) -> performance MIDI (those notes) ->
 FluidSynth WAV -> ffmpeg (H.264 + AAC).
 The frames go to a work folder next to the video, so an interrupted render
-picks up where it stopped (Blender skips frames already saved).
+picks up where it stopped (Blender skips frames already saved). --workers
+Blenders render side by side, each a share of the frames (default 2).
 
 Tools (environment variables override the defaults):
     BLENDER     C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe
@@ -44,6 +45,8 @@ FLUIDSYNTH = os.environ.get("FLUIDSYNTH", os.path.join(ASSETS, "fluidsynth", "bi
 SOUNDFONT = os.environ.get("SOUNDFONT", os.path.join(ASSETS, "MuseScore_General.sf2"))
 FFMPEG = os.environ.get("FFMPEG", shutil.which("ffmpeg") or "ffmpeg")
 SAMPLE_RATE = 48000
+WORKERS = 2                  # Blenders rendering side by side (--workers)
+MIN_WORKER_FRAMES = 60       # ...each with at least this many frames (each one builds the scene first)
 POLYPHONY = 16384            # FluidSynth voices (its default 256 drops notes in dense, pedalled music)
 
 
@@ -130,6 +133,59 @@ def blender(anim, style_file, *extra):
          anim, "--style", style_file] + list(extra), stdout=subprocess.DEVNULL)
 
 
+def frame_ranges(frames, n, workers):
+    """
+    1-based frame ranges "A-B" for `workers` Blenders side by side: the frames
+    not yet saved in `frames` (an interrupted render resumes) in equal shares,
+    each a run from its first missing frame to its last (Blender skips the saved
+    ones in between). No more Blenders than MIN_WORKER_FRAMES frames each.
+    """
+    missing = [i for i in range(1, n + 1) if not os.path.exists(os.path.join(frames, f"f_{i:04d}.png"))]
+    k = max(1, min(workers, len(missing) // MIN_WORKER_FRAMES))
+    out = []
+    for j in range(k):
+        part = missing[j * len(missing) // k:(j + 1) * len(missing) // k]
+        if part:
+            out.append(f"{part[0]}-{part[-1]}")
+    return out
+
+
+def blender_frames(anim, style_file, frames, n, workers, pressed_file, *extra):
+    """
+    Render the frames with up to `workers` Blenders at once (each builds the
+    scene and renders its share: Blender's per-frame overhead keeps one copy
+    from using the GPU fully); the first also writes pressed_file.
+    """
+    ranges = frame_ranges(frames, n, workers)
+    if not ranges:                           # all frames already there: only which notes are pressed
+        blender(anim, style_file, *extra, "--no-render", "--pressed", pressed_file)
+        return
+    if len(ranges) == 1:
+        blender(anim, style_file, *extra, "--out", frames, "--frames", ranges[0], "--pressed", pressed_file)
+        return
+    print(f"rendering with {len(ranges)} Blenders: frames {', '.join(ranges)}", flush=True)
+    procs = []
+    try:
+        for j, r in enumerate(ranges):
+            cmd = [BLENDER, "-b", "--factory-startup", "-P", os.path.join(HERE, "blender", "render3d.py"), "--",
+                   anim, "--style", style_file, *extra, "--out", frames, "--frames", r]
+            if j == 0:
+                cmd += ["--pressed", pressed_file]
+            procs.append(subprocess.Popen(cmd, stdout=subprocess.DEVNULL, creationflags=NO_WINDOW))
+        while procs:
+            for p in list(procs):
+                code = p.poll()
+                if code is None:
+                    continue
+                procs.remove(p)
+                if code:
+                    raise subprocess.CalledProcessError(code, p.args)
+            time.sleep(0.5)
+    finally:
+        for p in procs:                       # one failed (or we were stopped): stop the others
+            p.kill()
+
+
 def still(midi, t, style, out_png, view="auto", quality="fast", res="1280x720", work=None):
     """One frame of the video at song time t (the hands need a moment before it to be in place)."""
     work = work or os.path.splitext(out_png)[0] + "_work"
@@ -154,6 +210,7 @@ def main():
     ap.add_argument("--start", type=float, help="song time to start at (default: 3 s before the first note)")
     ap.add_argument("--end", type=float, help="song time to end at (default: 2 s after the last note)")
     ap.add_argument("--hands", default="rig", choices=("rig", "stick"))
+    ap.add_argument("--workers", type=int, default=WORKERS, help=f"Blenders rendering at once (default {WORKERS})")
     ap.add_argument("--keep", action="store_true", help="keep the frames and work files")
     args = ap.parse_args()
 
@@ -179,8 +236,8 @@ def main():
     # 2. frames (and which notes the fingers get down)
     stage("stage", "frames")
     pressed_file = os.path.join(work, "pressed.json")
-    blender(anim, style_file, "--out", frames, "--view", args.view, "--res", args.res, "--hands", args.hands,
-            "--quality", args.quality, "--pressed", pressed_file)
+    blender_frames(anim, style_file, frames, data["frames"], args.workers, pressed_file,
+                   "--view", args.view, "--res", args.res, "--hands", args.hands, "--quality", args.quality)
     with open(pressed_file) as fh:
         pressed = json.load(fh)
 

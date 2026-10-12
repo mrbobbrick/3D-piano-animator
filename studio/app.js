@@ -13,6 +13,7 @@ const api = async (path, body) => {
 };
 
 // seconds per frame at 1080p on this machine (measured, RTX 4060), scaled by picture size
+const WORKER_GAIN = { 1: 1, 2: 1.6, 3: 1.9 };   // guessed speed-up of Blenders side by side (not measured on a GPU yet)
 const PER_FRAME = { flat: 0.4, fast: 0.85, balanced: 1.2, high: 2.0, max: 2.6 };
 const RES_SCALE = { 720: 0.7, 1080: 1.0, 1440: 1.6 };
 const QUALITY_HINT = {
@@ -118,7 +119,7 @@ function useStyle(name, kind) {
 }
 
 // the preview and render options "Start over" changes (kept in its undo step)
-const OPTION_IDS = ["view", "shape", "pquality", "quality", "fps", "res", "range", "from", "to"];
+const OPTION_IDS = ["view", "shape", "pquality", "quality", "fps", "res", "workers", "range", "from", "to"];
 
 function snapshot(withOptions = false) {
   const snap = { style: clone(S.style), base: clone(S.base), baseName: S.baseName, baseKind: S.baseKind, tab: S.tab };
@@ -309,7 +310,7 @@ function factoryReset() {
   S.baseName = "Embers";
   S.baseKind = "preset";
   S.tab = S.groups[0];
-  for (const id of ["view", "shape", "pquality", "quality", "fps", "res", "range"]) {
+  for (const id of ["view", "shape", "pquality", "quality", "fps", "res", "workers", "range"]) {
     const sel = $(id);
     sel.value = [...sel.options].find((o) => o.defaultSelected)?.value ?? sel.options[0].value;
   }
@@ -845,7 +846,7 @@ function frameCount() {
 function updateEstimate() {
   const n = frameCount();
   const extra = 1 + 0.25 * (S.style.extra_hands || 0);       // each extra pair of hands costs a little
-  const per = PER_FRAME[$("quality").value] * (RES_SCALE[$("res").value] || 1) * extra;
+  const per = PER_FRAME[$("quality").value] * (RES_SCALE[$("res").value] || 1) * extra / (WORKER_GAIN[$("workers").value] || 1);
   $("estimate").textContent = n ? `${n.toLocaleString()} frames · about ${fmtDur(n * per + 60)}` : "";
   $("resNote").textContent = `${resFor(+$("res").value).replace("x", " × ")} px`;
   $("qualityHint").textContent = QUALITY_HINT[$("quality").value] || "";
@@ -862,7 +863,7 @@ async function render() {
   if (!S.song) return toast("Pick a song first", true);
   const body = {
     song: S.song, style: S.style, quality: $("quality").value, fps: +$("fps").value, res: resFor(+$("res").value),
-    view: $("view").value, name: $("fname").value.trim(),
+    view: $("view").value, name: $("fname").value.trim(), workers: +$("workers").value,
   };
   if ($("range").value === "part") { body.start = $("from").value; body.end = $("to").value; }
   try {
@@ -979,7 +980,7 @@ function saveLast() {
   saveLast.timer = setTimeout(() => api("/api/last", {
     song: S.song, style: S.style, base: S.base, baseName: S.baseName, baseKind: S.baseKind, t: S.t,
     view: $("view").value, shape: $("shape").value, pquality: $("pquality").value, quality: $("quality").value,
-    fps: $("fps").value, res: $("res").value, tab: S.tab, auto: $("auto").checked, allSongs: $("allSongs").checked,
+    fps: $("fps").value, res: $("res").value, workers: $("workers").value, tab: S.tab, auto: $("auto").checked, allSongs: $("allSongs").checked,
   }).catch(() => {}), 600);
 }
 
@@ -991,7 +992,7 @@ async function init() {
   S.presets = st.presets;
   S.saved = st.styles;
   const last = st.last || {};
-  for (const k of ["view", "shape", "pquality", "quality", "fps", "res"]) {
+  for (const k of ["view", "shape", "pquality", "quality", "fps", "res", "workers"]) {
     if (last[k] && [...$(k).options].some((o) => o.value === String(last[k]))) $(k).value = last[k];
   }
   if (last.auto === false) $("auto").checked = false;
@@ -1049,7 +1050,7 @@ $("cancelClip").onclick = () => api("/api/clip/cancel", {}).then(poll);
 for (const id of ["view", "pquality"]) $(id).onchange = () => { saveLast(); if ($("auto").checked) preview(); };
 $("shape").onchange = () => { setBoxShape($("shape").value); updateEstimate(); updateFileName(); saveLast(); if ($("auto").checked) preview(); };
 $("auto").onchange = saveLast;
-for (const id of ["quality", "fps", "res", "from", "to"]) $(id).oninput = () => { updateEstimate(); drawTimeline(); saveLast(); };
+for (const id of ["quality", "fps", "res", "workers", "from", "to"]) $(id).oninput = () => { updateEstimate(); drawTimeline(); saveLast(); };
 $("range").onchange = () => {
   document.querySelectorAll(".part").forEach((e) => (e.hidden = $("range").value !== "part"));
   if ($("range").value === "part" && S.info && !$("to").value) {

@@ -134,6 +134,9 @@
         <label>Size <select id="res">
           <option value="720">720p</option><option value="1080" selected>1080p</option><option value="1440">1440p</option>
         </select></label>
+        <label title="Blenders rendering side by side, each a share of the frames: faster while the graphics card has room (lower it if a render runs out of video memory)">At once <select id="workers">
+          <option value="1">1 Blender</option><option value="2" selected>2 Blenders</option><option value="3">3 Blenders</option>
+        </select></label>
         <label>Part <select id="range"><option value="all" selected>Whole song</option><option value="part">From… to…</option></select></label>
         <label class="part" hidden>From (s) <input id="from" type="number" step="0.5" min="0"></label>
         <label class="part" hidden>To (s) <input id="to" type="number" step="0.5" min="0"></label>

@@ -355,7 +355,7 @@ class Render:
         cmd = [console_python(), "-u", os.path.join(HERE, "render_video.py"), song, out,
                "--style", style_file, "--quality", req.get("quality", "balanced"),
                "--fps", str(int(req.get("fps", 30))), "--res", req.get("res", "1920x1080"),
-               "--view", req.get("view", "auto")]
+               "--view", req.get("view", "auto"), "--workers", str(max(1, min(3, int(req.get("workers", 2)))))]
         if req.get("start") not in (None, ""):
             cmd += ["--start", str(float(req["start"]))]
         if req.get("end") not in (None, ""):

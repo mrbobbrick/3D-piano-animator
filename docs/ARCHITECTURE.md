@@ -688,7 +688,9 @@ Detailed design notes, kept up to date as features were added. Start with `CLAUD
   Fountain: 15 (map) / 14 (render) of 1249 notes not pressed. A note not pressed isn't heard either
   (2026-10-12, whether or not it's drawn): `render3d.py --pressed` writes `Scene.pressed`, and `render_video.py`
   renders the frames first, then the audio from the pressed notes only (`performance_midi(..., pressed)`).
-  The `audio_source` "file" choice still plays every note in the MIDI file.
+  The `audio_source` "file" choice still plays every note in the MIDI file. FluidSynth runs with
+  `render_video.POLYPHONY` (16384) voices: its default 256 dropped 3938 notes of 30 s of Rush E with four
+  pianists (10.9k notes heard, pedalled), 4096 still 2018, 16384 none.
 - Played lengths (`played_lengths`, on by default, 2026-10-11): a note is drawn (and lights the runway, carries
   its finger number) from its finger's strike to its release (`press` / `release`, the hands' performance), not
   the MIDI file's `start` / `end` (`Scene.span`). The hands let go early to reach the next notes or cross

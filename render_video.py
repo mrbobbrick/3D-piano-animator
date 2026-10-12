@@ -44,6 +44,7 @@ FLUIDSYNTH = os.environ.get("FLUIDSYNTH", os.path.join(ASSETS, "fluidsynth", "bi
 SOUNDFONT = os.environ.get("SOUNDFONT", os.path.join(ASSETS, "MuseScore_General.sf2"))
 FFMPEG = os.environ.get("FFMPEG", shutil.which("ffmpeg") or "ffmpeg")
 SAMPLE_RATE = 48000
+POLYPHONY = 16384            # FluidSynth voices (its default 256 drops notes in dense, pedalled music)
 
 
 def performance_midi(data, path, extra_heard=True, pressed=None):
@@ -192,7 +193,7 @@ def main():
     else:
         performance_midi(data, mid, video_style.extra_heard(style), pressed)
     run([FLUIDSYNTH, "-ni", "-q", "-g", f"{style['audio_gain']:.2f}", "-r", str(SAMPLE_RATE),
-         "-R", "1" if style["reverb"] > 0 else "0",
+         "-R", "1" if style["reverb"] > 0 else "0", "-o", f"synth.polyphony={POLYPHONY}",
          "-o", f"synth.reverb.level={style['reverb']:.2f}", "-o", f"synth.reverb.room-size={style['reverb_room']:.2f}",
          "-F", wav, SOUNDFONT, mid])
 

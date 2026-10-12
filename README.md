@@ -30,7 +30,8 @@ sculpted hands pressing each key with a planned fingering, and the audio of the 
 - **Vertical and square videos.** Use 9:16 for Shorts/TikTok/Reels or 1:1. The camera moves closer and follows
   the hands.
 - **Fallboard.** A clean, minimal page in your browser for editing a style, previewing single frames or
-  3-second clips, and queuing full renders with a progress bar. Everything runs locally on your computer.
+  3-second clips, and queuing full renders with a progress bar. Styles can be shared as .json files: Import…
+  (or drop one on the page) loads every setting at once. Everything runs locally on your computer.
 - **Audio.** What you hear is what the hands play: the performance is rendered to WAV with FluidSynth and
   muxed into the video with ffmpeg. A note no finger can reach is neither shown nor heard (or choose "Every
   note in the file" to hear the whole piece anyway).

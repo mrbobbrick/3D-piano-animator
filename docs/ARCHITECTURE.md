@@ -708,7 +708,9 @@ Detailed design notes, kept up to date as features were added. Start with `CLAUD
   the HTML's default preview/render options; its undo step also keeps those options, `snapshot(true)`). A
   note-density timeline (per hand; render range shaded; click to seek), 3 s preview clips (`Clips`: render_video
   at preview quality, ~90 s), frame shape, a render queue (`Render.submit`), keyboard shortcuts, progress in the
-  tab title and a pill in the top bar.
+  tab title and a pill in the top bar. Styles import from a .json (Import… beside Save as…, or dropped anywhere on
+  the page: `importStyle`; a dropped .mid/.midi is added as a song, `addMidi`) and export from the ⋯ menu; a file
+  is `{"name", "style"}` or a bare style, and settings it leaves out take their defaults.
 - Preview history: each frame is saved with a `preview_<id>.json` beside it (time, song, style, shape, quality),
   so the history survives a reload (`GET /api/previews?song=`, newest `KEEP_PREVIEWS` = 60 kept). Ids are tenths
   of a second since 2026 (`first_id`), so they keep growing across server restarts. Deleting (a thumbnail's ✕,

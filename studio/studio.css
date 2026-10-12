@@ -257,3 +257,7 @@ dialog video, #lightImg { display: block; max-width: 88vw; max-height: 80vh; mar
   .boxTools { opacity: 1; }
   .dock { width: 100vw; }
 }
+.dropHint { position: fixed; inset: 12px; z-index: 50; border: 2px dashed var(--muted); border-radius: 14px;
+  background: color-mix(in srgb, var(--bg, #fff) 82%, transparent); display: grid; place-items: center; pointer-events: none; }
+.dropHint div { font-size: 15px; font-weight: 600; color: var(--text); }
+.dropHint[hidden] { display: none; }

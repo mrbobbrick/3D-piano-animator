@@ -59,7 +59,7 @@ SETTINGS = [
     dict(id="note_gap", group="Notes", label="Gap between notes", kind="slider", min=0.0, max=0.006,
          default=0.0008, fmt=_mm),
     dict(id="only_pressed", group="Notes", label="Only notes the hands actually press", kind="toggle",
-         default=True, desc="Hide a note whose finger doesn't get its key down (the sound still plays)"),
+         default=True, desc="Hide a note whose finger doesn't get its key down (it isn't heard either way)"),
     dict(id="played_lengths", group="Notes", label="Notes last as long as the key is held", kind="toggle",
          default=True, desc="Each note runs from the finger's strike to its release, not the MIDI file's times "
                             "(a hand lets go early to reach the next notes; the pedal still holds the sound)"),
@@ -254,8 +254,8 @@ SETTINGS = [
     # ---- audio
     dict(id="audio_source", group="Audio", label="Sound", kind="choice", default="hands",
          options=[("hands", "What the hands play"), ("file", "Every note in the file")],
-         desc="Every note: for music no hands could play (\"black MIDI\", Rush E), the whole piece is heard "
-              "while the hands play what they can"),
+         desc="What the hands play: a note no finger gets down (out of reach) is silent. Every note: the whole "
+              "piece is heard, even the notes no hand reaches (\"black MIDI\", Rush E)"),
     dict(id="audio_gain", group="Audio", label="Volume", kind="slider", min=0.2, max=1.5, default=0.6, fmt=_x),
     dict(id="reverb", group="Audio", label="Reverb", kind="slider", min=0.0, max=1.0, default=0.4, fmt=_pct),
     dict(id="reverb_room", group="Audio", label="Room size", kind="slider", min=0.0, max=1.0, default=0.5,

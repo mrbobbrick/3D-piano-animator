@@ -13,6 +13,7 @@ Options:
     --still FILE           render only the last frame, to this PNG
     --blend FILE           also save the scene as a .blend
     --no-render            build (and save) only
+    --pressed FILE         write which notes the fingers press (a 0/1 per export note, in order) as JSON
 """
 
 import argparse
@@ -58,6 +59,7 @@ def parse(argv=None):
     ap.add_argument("--still")
     ap.add_argument("--blend")
     ap.add_argument("--no-render", action="store_true")
+    ap.add_argument("--pressed")
     args = ap.parse_args(argv)
     if args.preview:
         args.quality = "preview"
@@ -190,6 +192,9 @@ def run(argv=None):
             for h, hd in data["hands"].items()}
     sc.build_keyboard()
     sc.animate_keys(tips)
+    if args.pressed:
+        with open(args.pressed, "w") as fh:
+            json.dump([int(p) for p in sc.pressed], fh)
     sc.build_notes()
     sc.build_hit_line()
     sc.build_sparks()

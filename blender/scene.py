@@ -654,24 +654,26 @@ class Scene:
 
     def _decide_shown(self, reached):
         """
-        Which notes are drawn (with their sparks): with only_pressed, those
-        whose finger gets the key down (export3d.PRESSED_DOWN) - from the
-        export's "pressed" when it has one (previews), else from the keys'
-        motion here, for notes whose strike lies inside the export.
+        Which notes the fingers press (self.pressed, also what's heard:
+        render_video.py) and which are drawn with their sparks (self.shown:
+        with only_pressed, the pressed ones). A note is pressed when its
+        finger gets the key down (export3d.PRESSED_DOWN) - from the export's
+        "pressed" when it has one (previews), else from the keys' motion
+        here, for notes whose strike lies inside the export.
         """
         t_end = self.t0 + (self.n - 1) / self.fps
-        self.shown = []
+        self.pressed = []
         for ni, n in enumerate(self.d["notes"]):
             ok = True
-            if self.st["only_pressed"]:
-                if "pressed" in n:
-                    ok = n["pressed"]
-                elif self.t0 <= n["press"] + 0.06 <= t_end:
-                    ok = reached.get(ni, 0.0) >= 0.4
-            self.shown.append(ok)
-        hidden = self.shown.count(False)
-        if hidden:
-            print(f"notes not pressed (hidden): {hidden}")
+            if "pressed" in n:
+                ok = n["pressed"]
+            elif self.t0 <= n["press"] + 0.06 <= t_end:
+                ok = reached.get(ni, 0.0) >= 0.4
+            self.pressed.append(ok)
+        self.shown = list(self.pressed) if self.st["only_pressed"] else [True] * len(self.pressed)
+        missed = self.pressed.count(False)
+        if missed:
+            print(f"notes not pressed (silent{', hidden' if self.st['only_pressed'] else ''}): {missed}")
 
     # ----- falling notes ------------------------------------------------------
     def build_notes(self):

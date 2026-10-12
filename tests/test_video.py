@@ -190,3 +190,8 @@ def test_black_midi_chords_load_quickly_and_share_out(tmp_path):
     render_video.file_midi(src, {"t0": 2.0, "frames": 120, "fps": 30}, out)
     starts = sorted(n.start for i in pretty_midi.PrettyMIDI(out).instruments for n in i.notes)
     assert len(starts) == 8 and abs(starts[0]) < 1e-3          # the notes from 2 s to 6 s, from 0 s
+    # what the hands play leaves out the notes no finger gets down
+    data = {"t0": 0.0, "pedals": [], "notes": [dict(pitch=60 + k, hand="R", velocity=80, press=k * 0.5,
+                                                     release=k * 0.5 + 0.4) for k in range(4)]}
+    render_video.performance_midi(data, out, pressed=[1, 0, 1, 0])
+    assert sorted(n.pitch for i in pretty_midi.PrettyMIDI(out).instruments for n in i.notes) == [60, 62]

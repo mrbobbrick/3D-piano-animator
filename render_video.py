@@ -52,7 +52,7 @@ def performance_midi(data, path, extra_heard=True, pressed=None):
     What the hands play (strike and release times, pedals), shifted so the
     video's first frame is 0 s; the extra pairs of hands only if extra_heard.
     pressed: a 0/1 per export note (render3d.py --pressed) - a note whose
-    finger doesn't get its key down isn't heard.
+    finger doesn't get its key down isn't heard (given with only_pressed).
     """
     import pretty_midi
     shift = -data["t0"]
@@ -191,7 +191,7 @@ def main():
     if style["audio_source"] == "file":
         file_midi(args.midi, data, mid)
     else:
-        performance_midi(data, mid, video_style.extra_heard(style), pressed)
+        performance_midi(data, mid, video_style.extra_heard(style), pressed if style["only_pressed"] else None)
     run([FLUIDSYNTH, "-ni", "-q", "-g", f"{style['audio_gain']:.2f}", "-r", str(SAMPLE_RATE),
          "-R", "1" if style["reverb"] > 0 else "0", "-o", f"synth.polyphony={POLYPHONY}",
          "-o", f"synth.reverb.level={style['reverb']:.2f}", "-o", f"synth.reverb.room-size={style['reverb_room']:.2f}",

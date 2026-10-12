@@ -32,7 +32,8 @@ sculpted hands pressing each key with a planned fingering, and the audio of the 
 - **Fallboard.** A clean, minimal page in your browser for editing a style, previewing single frames or
   3-second clips, and queuing full renders with a progress bar. Everything runs locally on your computer.
 - **Audio.** What you hear is what the hands play: the performance is rendered to WAV with FluidSynth and
-  muxed into the video with ffmpeg.
+  muxed into the video with ffmpeg. A note no finger can reach is neither shown nor heard (or choose "Every
+  note in the file" to hear the whole piece anyway).
 
 Still included from the original: the real-time 2D falling-notes player, the fingering editor and the
 "Pianists & hands" editor. See the [original project](https://github.com/V9011N/pygame-piano-animator) for
@@ -127,8 +128,8 @@ python main.py song.mid --edit   # fingering editor
    hands.
 2. `export3d.py` samples the hands' joints every frame, in metres, along with the keyboard and the
    performance, and writes it as JSON.
-3. `render_video.py` turns the performance into audio with FluidSynth, runs Blender (`blender/render3d.py`)
-   to build the scene and render the frames, then has ffmpeg combine them into an MP4.
+3. `render_video.py` runs Blender (`blender/render3d.py`) to build the scene and render the frames, turns
+   the notes the fingers actually press into audio with FluidSynth, then has ffmpeg combine them into an MP4.
 4. `video_studio.py` (Fallboard) is a small local web server (Python standard library only) that keeps a Blender open
    for fast previews.
 

@@ -11,8 +11,9 @@ your saved styles, or a JSON file. --quality: max, high, balanced, fast or
 preview (blender/render3d.py QUALITY); balanced is ~1.2 s a frame at 1080p on
 an RTX 4060, fast ~0.8 s; flat (plain colours, for checking) is far quicker.
 
-Steps: export3d.py (hand animation) -> performance MIDI -> FluidSynth WAV ->
-Blender (blender/render3d.py, PNG frames) -> ffmpeg (H.264 + AAC).
+Steps: export3d.py (hand animation) -> Blender (blender/render3d.py, PNG frames,
+and which notes the fingers get down) -> performance MIDI (those notes) ->
+FluidSynth WAV -> ffmpeg (H.264 + AAC).
 The frames go to a work folder next to the video, so an interrupted render
 picks up where it stopped (Blender skips frames already saved).
 
@@ -45,17 +46,21 @@ FFMPEG = os.environ.get("FFMPEG", shutil.which("ffmpeg") or "ffmpeg")
 SAMPLE_RATE = 48000
 
 
-def performance_midi(data, path, extra_heard=True):
+def performance_midi(data, path, extra_heard=True, pressed=None):
     """
     What the hands play (strike and release times, pedals), shifted so the
     video's first frame is 0 s; the extra pairs of hands only if extra_heard.
+    pressed: a 0/1 per export note (render3d.py --pressed) - a note whose
+    finger doesn't get its key down isn't heard.
     """
     import pretty_midi
     shift = -data["t0"]
     pm = pretty_midi.PrettyMIDI(initial_tempo=120)
     piano = pretty_midi.Instrument(program=0, name="Piano")
-    for n in data["notes"]:
+    for i, n in enumerate(data["notes"]):
         if len(n["hand"]) > 1 and not extra_heard:
+            continue
+        if pressed is not None and not pressed[i]:
             continue
         piano.notes.append(pretty_midi.Note(velocity=int(n["velocity"]), pitch=int(n["pitch"]),
                                             start=n["press"] + shift, end=max(n["release"], n["press"] + 0.01) + shift))
@@ -170,23 +175,26 @@ def main():
                   video_style.shared_pairs(style), video_style.enter_lead(style), style["hands_apart"])
     stage("frames", data["frames"], frames)
 
-    # 2. audio of what the hands play
+    # 2. frames (and which notes the fingers get down)
+    stage("stage", "frames")
+    pressed_file = os.path.join(work, "pressed.json")
+    blender(anim, style_file, "--out", frames, "--view", args.view, "--res", args.res, "--hands", args.hands,
+            "--quality", args.quality, "--pressed", pressed_file)
+    with open(pressed_file) as fh:
+        pressed = json.load(fh)
+
+    # 3. audio of what the hands play
     stage("stage", "audio")
     mid = os.path.join(work, "performance.mid")
     wav = os.path.join(work, "performance.wav")
     if style["audio_source"] == "file":
         file_midi(args.midi, data, mid)
     else:
-        performance_midi(data, mid, video_style.extra_heard(style))
+        performance_midi(data, mid, video_style.extra_heard(style), pressed)
     run([FLUIDSYNTH, "-ni", "-q", "-g", f"{style['audio_gain']:.2f}", "-r", str(SAMPLE_RATE),
          "-R", "1" if style["reverb"] > 0 else "0",
          "-o", f"synth.reverb.level={style['reverb']:.2f}", "-o", f"synth.reverb.room-size={style['reverb_room']:.2f}",
          "-F", wav, SOUNDFONT, mid])
-
-    # 3. frames
-    stage("stage", "frames")
-    blender(anim, style_file, "--out", frames, "--view", args.view, "--res", args.res, "--hands", args.hands,
-            "--quality", args.quality)
 
     # 4. video
     stage("stage", "encode")

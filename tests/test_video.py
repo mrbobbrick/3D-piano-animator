@@ -195,3 +195,15 @@ def test_black_midi_chords_load_quickly_and_share_out(tmp_path):
                                                      release=k * 0.5 + 0.4) for k in range(4)]}
     render_video.performance_midi(data, out, pressed=[1, 0, 1, 0])
     assert sorted(n.pitch for i in pretty_midi.PrettyMIDI(out).instruments for n in i.notes) == [60, 62]
+
+
+def test_frames_shared_among_blenders(tmp_path):
+    import render_video
+    ranges = render_video.frame_ranges(str(tmp_path), 300, 2)
+    assert ranges == ["1-150", "151-300"]
+    for i in range(1, 121):                                   # an interrupted render: the first 120 saved
+        (tmp_path / f"f_{i:04d}.png").write_bytes(b"")
+    assert render_video.frame_ranges(str(tmp_path), 300, 2) == ["121-210", "211-300"]
+    assert render_video.frame_ranges(str(tmp_path), 300, 3) == ["121-180", "181-240", "241-300"]
+    assert render_video.frame_ranges(str(tmp_path), 150, 3) == ["121-150"]   # too few frames to share
+    assert render_video.frame_ranges(str(tmp_path), 120, 2) == []

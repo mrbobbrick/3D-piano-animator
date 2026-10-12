@@ -653,6 +653,11 @@ Detailed design notes, kept up to date as features were added. Start with `CLAUD
   (`compositor_device`). Measured: balanced 1.16 s, fast 0.83 s, flat (Workbench, `blender/flat.py`) 0.39 s at
   720p. Workbench ignores shaders, so `flat.py` clips notes with geometry nodes (squashed onto the hit line, then
   tucked below/behind it) and gives each note colour a plain material.
+- Blenders side by side (2026-10-12): that floor is per process, so `render_video.py --workers N` (default 2;
+  Fallboard's "At once") starts N Blenders, each building the scene and rendering an equal share of the frames
+  still missing (`frame_ranges`: a run from its first missing frame to its last, at least `MIN_WORKER_FRAMES`
+  each, so clips stay on one); the first writes `--pressed`. One failing stops the others. The page's estimate
+  divides by a guessed gain (`WORKER_GAIN`: 1.6 for 2, 1.9 for 3) until it's measured on a GPU.
 - Later additions (2026-10-10): the red felt strip behind the keys is off by default (`felt_strip`); a glow line on
   the hit line (`hit_line*`), one segment per key, coloured and flared from the key's colour curves like the glow
   cards; on the runway the notes end `hit_gap` behind the keys (was a fixed 2 cm). Keyboard colours and case gloss,

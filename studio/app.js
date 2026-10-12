@@ -1023,14 +1023,17 @@ async function init() {
 
 // ----- wiring
 $("song").onchange = () => chooseSong($("song").value);
-$("upload").onchange = async () => {
-  const f = $("upload").files[0];
-  if (!f) return;
+async function addMidi(f) {
   const r = await fetch("/api/upload?name=" + encodeURIComponent(f.name), { method: "POST", body: f });
   const d = await r.json();
   if (!r.ok) return toast(d.error, true);
   await loadSongs(d.path);
   chooseSong(d.path);
+}
+$("upload").onchange = async () => {
+  const f = $("upload").files[0];
+  if (f) await addMidi(f);
+  $("upload").value = "";
 };
 {
   const cv = $("density");
@@ -1101,7 +1104,6 @@ document.querySelector('[data-reset="tab"]').onclick = () =>
   resetSettings(S.spec.filter((sp) => sp.group === S.tab).map((sp) => sp.id), `The ${S.tab} tab`);
 document.querySelector('[data-reset="style"]').onclick = () => resetSettings(S.spec.map((sp) => sp.id), "Every setting");
 document.querySelector('[data-reset="factory"]').onclick = factoryReset;
-$("moreMenu").querySelector("label").onclick = () => setTimeout(closeMenus, 0);
 
 // preview history
 $("clearHistory").onclick = deleteAllPreviews;
@@ -1127,9 +1129,7 @@ $("exportStyle").onclick = () => {
   a.click();
   URL.revokeObjectURL(a.href);
 };
-$("importStyle").onchange = async () => {
-  const f = $("importStyle").files[0];
-  if (!f) return;
+async function importStyle(f) {
   try {
     const d = JSON.parse(await f.text());
     const st = d.style || d;
@@ -1144,8 +1144,32 @@ $("importStyle").onchange = async () => {
     changed(true);
     toast(`Loaded "${S.baseName}" (Save as… to keep it in the list)`);
   } catch (e) { toast("That isn't a style file: " + e.message, true); }
+}
+$("importStyle").onchange = async () => {
+  const f = $("importStyle").files[0];
+  if (f) await importStyle(f);
   $("importStyle").value = "";
 };
+// drop a style (.json) or a song (.mid) anywhere on the page
+{
+  let depth = 0;
+  const hint = (on) => { $("dropHint").hidden = !on; };
+  const files = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+  document.addEventListener("dragenter", (e) => { if (files(e)) { depth++; hint(true); } });
+  document.addEventListener("dragleave", (e) => { if (files(e) && --depth <= 0) { depth = 0; hint(false); } });
+  document.addEventListener("dragover", (e) => { if (files(e)) e.preventDefault(); });
+  document.addEventListener("drop", async (e) => {
+    if (!files(e)) return;
+    e.preventDefault();
+    depth = 0;
+    hint(false);
+    for (const f of e.dataTransfer.files) {
+      if (/\.json$/i.test(f.name)) await importStyle(f);
+      else if (/\.midi?$/i.test(f.name)) await addMidi(f);
+      else toast(`"${f.name}" isn't a style (.json) or a MIDI file`, true);
+    }
+  });
+}
 $("quit").onclick = async () => {
   if (!confirm("Stop the studio? A video that is rendering (and the queue) will be cancelled.")) return;
   await api("/api/quit", {}).catch(() => {});

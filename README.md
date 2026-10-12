@@ -30,10 +30,11 @@ sculpted hands pressing each key with a planned fingering, and the audio of the 
 - **Vertical and square videos.** Use 9:16 for Shorts/TikTok/Reels or 1:1. The camera moves closer and follows
   the hands.
 - **Fallboard.** A clean, minimal page in your browser for editing a style, previewing single frames or
-  3-second clips, and queuing full renders with a progress bar. Everything runs locally on your computer.
+  3-second clips, and queuing full renders with a progress bar. Styles can be shared as .json files: Import…
+  (or drop one on the page) loads every setting at once. Everything runs locally on your computer.
 - **Audio.** What you hear is what the hands play: the performance is rendered to WAV with FluidSynth and
-  muxed into the video with ffmpeg. A note no finger can reach is neither shown nor heard (or choose "Every
-  note in the file" to hear the whole piece anyway).
+  muxed into the video with ffmpeg. A note no finger can reach is neither shown nor heard ("Only notes the
+  hands actually press"; turn it off, or choose "Every note in the file", to hear the whole piece anyway).
 
 Still included from the original: the real-time 2D falling-notes player, the fingering editor and the
 "Pianists & hands" editor. See the [original project](https://github.com/V9011N/pygame-piano-animator) for

@@ -59,7 +59,8 @@ SETTINGS = [
     dict(id="note_gap", group="Notes", label="Gap between notes", kind="slider", min=0.0, max=0.006,
          default=0.0008, fmt=_mm),
     dict(id="only_pressed", group="Notes", label="Only notes the hands actually press", kind="toggle",
-         default=True, desc="Hide a note whose finger doesn't get its key down (it isn't heard either way)"),
+         default=True, desc="Hide and mute a note whose finger doesn't get its key down (off: every note is shown "
+                            "and heard)"),
     dict(id="played_lengths", group="Notes", label="Notes last as long as the key is held", kind="toggle",
          default=True, desc="Each note runs from the finger's strike to its release, not the MIDI file's times "
                             "(a hand lets go early to reach the next notes; the pedal still holds the sound)"),

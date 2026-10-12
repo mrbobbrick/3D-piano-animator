@@ -41,6 +41,7 @@
       <div id="saved" class="chips"></div>
       <div class="row tools">
         <button id="saveStyle" class="link" title="Keep this look in the list (Ctrl+S)">Save as…</button>
+        <label class="link" title="Load a style from a .json file (or drop the file anywhere on the page)">Import…<input id="importStyle" type="file" accept=".json" hidden></label>
         <div class="menuWrap">
           <button id="resetBtn" class="link" title="Put settings back">Reset</button>
           <div id="resetMenu" class="menu" hidden>
@@ -52,9 +53,8 @@
         </div>
         <span class="grow"></span>
         <div class="menuWrap">
-          <button id="moreBtn" class="icon" title="More: import, export, delete">⋯</button>
+          <button id="moreBtn" class="icon" title="More: export, delete">⋯</button>
           <div id="moreMenu" class="menu right" hidden>
-            <label class="item"><b>Import…</b><span>Load a style from a .json file</span><input id="importStyle" type="file" accept=".json" hidden></label>
             <button id="exportStyle"><b>Export…</b><span>Save this look as a .json file</span></button>
             <button id="deleteStyle" class="danger" hidden><b>Delete this style</b><span>Remove it from the saved list</span></button>
           </div>
@@ -181,10 +181,12 @@
     <li>A changed setting is marked with a dot. Its <b>↺</b> button (or a double-click) puts it back to the style's value.</li>
     <li>Click a slider's number to type an exact value.</li>
     <li><b>Reset</b> puts back the open tab, every edit, or everything (<i>Start over</i>). Undo brings any of it back.</li>
+    <li>Drop a style file (.json) anywhere on the page to load it, or a MIDI file to add the song.</li>
     <li>Hover a preview thumbnail for <b>Use look</b> (go back to its settings) and <b>✕</b> (delete it).</li>
   </ul>
   <div class="row"><span class="grow"></span><button id="closeHelp" class="btn">Close</button></div>
 </dialog>
+<div id="dropHint" class="dropHint" hidden><div>Drop a style (.json) or a song (.mid)</div></div>
 <div id="toast" class="toast" hidden><span id="toastText"></span><button id="toastAction" class="link" hidden></button></div>
 <script src="/static/app.js"></script>
 </body>

@@ -685,9 +685,10 @@ Detailed design notes, kept up to date as features were added. Start with `CLAUD
   (`Scene._decide_shown`, the deepest the key gets while the note is held, for strikes inside the export);
   previews use `Export.pressed_map()` (a pose just after each strike, or halfway through: ~40 ms a note, ~50 s
   for 1249 notes), worked out in the background by the server and passed as each note's "pressed". New Ember
-  Fountain: 15 (map) / 14 (render) of 1249 notes not pressed. A note not pressed isn't heard either
-  (2026-10-12, whether or not it's drawn): `render3d.py --pressed` writes `Scene.pressed`, and `render_video.py`
-  renders the frames first, then the audio from the pressed notes only (`performance_midi(..., pressed)`).
+  Fountain: 15 (map) / 14 (render) of 1249 notes not pressed. With `only_pressed` a note not pressed
+  isn't heard either (2026-10-12; off, every note is drawn and heard): `render3d.py --pressed` writes
+  `Scene.pressed`, and `render_video.py` renders the frames first, then the audio from the pressed notes only
+  (`performance_midi(..., pressed)`).
   The `audio_source` "file" choice still plays every note in the MIDI file. FluidSynth runs with
   `render_video.POLYPHONY` (16384) voices: its default 256 dropped 3938 notes of 30 s of Rush E with four
   pianists (10.9k notes heard, pedalled), 4096 still 2018, 16384 none.
@@ -708,7 +709,9 @@ Detailed design notes, kept up to date as features were added. Start with `CLAUD
   the HTML's default preview/render options; its undo step also keeps those options, `snapshot(true)`). A
   note-density timeline (per hand; render range shaded; click to seek), 3 s preview clips (`Clips`: render_video
   at preview quality, ~90 s), frame shape, a render queue (`Render.submit`), keyboard shortcuts, progress in the
-  tab title and a pill in the top bar.
+  tab title and a pill in the top bar. Styles import from a .json (Import… beside Save as…, or dropped anywhere on
+  the page: `importStyle`; a dropped .mid/.midi is added as a song, `addMidi`) and export from the ⋯ menu; a file
+  is `{"name", "style"}` or a bare style, and settings it leaves out take their defaults.
 - Preview history: each frame is saved with a `preview_<id>.json` beside it (time, song, style, shape, quality),
   so the history survives a reload (`GET /api/previews?song=`, newest `KEEP_PREVIEWS` = 60 kept). Ids are tenths
   of a second since 2026 (`first_id`), so they keep growing across server restarts. Deleting (a thumbnail's ✕,
